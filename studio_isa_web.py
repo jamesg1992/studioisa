@@ -124,50 +124,61 @@ def main():
 # --- blocco classificazione termine ---
 if pending:
     term = pending[idx]
-    st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
+    total_terms = len(pending)
+    st.warning(f"🧠 Da classificare: {total_terms} termini | Corrente: {idx+1}/{total_terms}")
 
-    # chiave unica per forzare reset selectbox ogni volta
-    cat_key = f"select_{idx}_{term}"
-
-    # categoria predefinita
+    # Categoria di default
     default_cat = "ALTRE PRESTAZIONI"
+
+    # Se non abbiamo ancora una selezione salvata per questo termine, usiamo la default
+    if "current_cat" not in st.session_state:
+        st.session_state.current_cat = default_cat
+
+    # Selectbox per la categoria (mantiene il valore scelto)
     selected_cat = st.selectbox(
         f"Categoria per “{term}”:",
         list(_RULES.keys()),
-        index=list(_RULES.keys()).index(default_cat),
-        key=cat_key,
+        index=list(_RULES.keys()).index(st.session_state.current_cat),
+        key=f"select_term_{idx}"
     )
 
-    c1, c2, c3 = st.columns([1,1,2])
-    with c1:
+    # Bottoni
+    col1, col2, col3 = st.columns([1, 1, 2])
+
+    with col1:
         if st.button("✅ Salva e vai al prossimo", key=f"save_{idx}"):
-            # salva la scelta
+            # salva la categoria
             st.session_state.local_updates[term] = selected_cat
 
-            # passa al termine successivo
-            st.session_state.idx += 1
-            if st.session_state.idx >= len(pending):
-                st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
-                st.session_state.idx = 0  # reset per sicurezza
-                return
-            # 🔁 rerun per mostrare il prossimo termine
-            st.experimental_rerun()
+            # reset categoria corrente (default)
+            st.session_state.current_cat = default_cat
 
-    with c2:
+            # passa al prossimo termine
+            st.session_state.idx += 1
+
+            if st.session_state.idx >= len(pending):
+                st.session_state.idx = 0
+                st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
+            st.rerun()
+
+    with col2:
         if st.button("⏭️ Salta", key=f"skip_{idx}"):
             st.session_state.idx += 1
             if st.session_state.idx >= len(pending):
                 st.session_state.idx = 0
-            st.experimental_rerun()
+            st.session_state.current_cat = default_cat
+            st.rerun()
 
-    with c3:
-        if st.button("💾 Salva tutto su GitHub", type="primary", key="save_all"):
+    with col3:
+        if st.button("💾 Salva tutto su GitHub", type="primary"):
             st.session_state.user_memory.update(st.session_state.local_updates)
             github_save_json(st.session_state.user_memory)
             st.session_state.local_updates = {}
             st.session_state.pending_terms = []
             st.success("✅ Tutti i nuovi termini salvati su GitHub!")
-            st.experimental_rerun()
+            st.session_state.current_cat = default_cat
+            st.rerun()
+
     return
 
     # --- Calcolo report ---
@@ -214,6 +225,7 @@ if pending:
 
 if __name__ == "__main__":
     main()
+
 
 
 
