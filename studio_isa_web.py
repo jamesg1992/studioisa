@@ -148,7 +148,7 @@ def main():
                     user_memory[current_term] = cat
                     github_save_json(user_memory)
                     st.session_state.current_idx += 1
-                    st.experimental_rerun()
+                    st.rerun()
             with col2:
                 if st.button("⏹️ Interrompi"):
                     st.success("Salvataggio interrotto. I progressi sono memorizzati.")
@@ -243,3 +243,4 @@ def main():
 # === MAIN ===
 if __name__ == "__main__":
     main()
+
