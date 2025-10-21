@@ -195,6 +195,9 @@ ws.title = "Report"
 
 start_row, start_col = 3, 2
 
+# Definisci colore per i totali (giallo chiaro)
+total_fill = PatternFill(start_color="FFF4B084", end_color="FFF4B084", fill_type="solid")
+
 # Tabella Studio ISA
 isa_headers = ["FamigliaCategoria", "Qtà", "Netto", "% Qtà", "% Netto"]
 for j, h in enumerate(isa_headers, start=start_col):
@@ -202,9 +205,13 @@ for j, h in enumerate(isa_headers, start=start_col):
 for i, row in enumerate(dataframe_to_rows(studio_isa, index=False, header=False), start=start_row+1):
     for j, v in enumerate(row, start=start_col):
         ws.cell(row=i, column=j, value=v)
+
+# Totale in grassetto + giallo
 tot_row = start_row + len(studio_isa)
 for j in range(start_col, start_col + len(isa_headers)):
-    ws.cell(row=tot_row, column=j).font = Font(bold=True)
+    cell = ws.cell(row=tot_row, column=j)
+    cell.font = Font(bold=True)
+    cell.fill = total_fill
 
 # Pivot accanto
 piv_col = start_col + 7
@@ -214,9 +221,13 @@ for j, h in enumerate(piv_headers, start=piv_col):
 for i, row in enumerate(dataframe_to_rows(pivot, index=False, header=False), start=start_row+1):
     for j, v in enumerate(row, start=piv_col):
         ws.cell(row=i, column=j, value=v)
+
+# Totale pivot in grassetto + giallo
 tot_row_piv = start_row + len(pivot)
 for j in range(piv_col, piv_col + len(piv_headers)):
-    ws.cell(row=tot_row_piv, column=j).font = Font(bold=True)
+    cell = ws.cell(row=tot_row_piv, column=j)
+    cell.font = Font(bold=True)
+    cell.fill = total_fill
 
 # Grafico sotto pivot
 img = XLImage(buf)
@@ -252,4 +263,5 @@ with col1:
 with col2:
     st.markdown("### Pivot per FamigliaCategoria")
     st.dataframe(pivot)
+
 
