@@ -1,232 +1,196 @@
 import streamlit as st
 import pandas as pd
-import json, os, base64, requests
-from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font, PatternFill
-import matplotlib.pyplot as plt
+import json, os, re, time
+from datetime import datetime
 
-# === CONFIG ===
-st.set_page_config(page_title="Studio ISA", layout="wide")
-GITHUB_FILE = os.getenv("GITHUB_FILE", "keywords_memory.json")
-GITHUB_REPO = os.getenv("GITHUB_REPO")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-
-# === GITHUB I/O ===
-def github_load_json():
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            content = base64.b64decode(r.json()["content"]).decode("utf-8")
-            return json.loads(content)
-        return {}
-    except Exception:
-        return {}
-
-def github_save_json(data: dict):
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-        get_res = requests.get(url, headers=headers)
-        sha = get_res.json().get("sha") if get_res.status_code == 200 else None
-
-        encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")).decode("utf-8")
-        payload = {"message": "Aggiornamento dizionario Studio ISA", "content": encoded, "branch": "main"}
-        if sha:
-            payload["sha"] = sha
-
-        put_res = requests.put(url, headers=headers, data=json.dumps(payload))
-        if put_res.status_code in (200, 201):
-            st.success("✅ Dizionario aggiornato su GitHub!")
-        else:
-            st.error(f"❌ Errore GitHub: {put_res.status_code}")
-    except Exception as e:
-        st.error(f"❌ Salvataggio GitHub fallito: {e}")
-
-# === CACHE LETTURA EXCEL ===
-@st.cache_data(show_spinner=False)
-def load_excel(file):
-    return pd.read_excel(file)
-
-# === CLASSIFICAZIONE ===
+# ========== CONFIG ==========
 _RULES = {
-    "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt"],
-    "VISITE": ["visita","controllo","consulto","dermatologico"],
-    "FAR": ["meloxidyl","konclav","enrox","profenacarp","apoquel","osurnia","cylanic","mometa","aristos","cytopoint","milbemax","stomorgyl","previcox"],
-    "CHIRURGIA": ["intervento","chirurg","castraz","sterilizz","ovariect","detartrasi","estraz"],
-    "DIAGNOSTICA PER IMMAGINI": ["rx","radiograf","eco","ecografia","tac"],
-    "MEDICINA": ["terapia","terapie","flebo","day hospital","trattamento","emedog","cerenia","endovena"],
-    "VACCINI": ["vacc","letifend","rabbia","trivalente","felv"],
-    "CHIP": ["microchip"],
-    "ALTRE PRESTAZIONI": ["trasporto","eutanasia","unghie","cremazion","otoematoma"]
+    "ALTRE PRESTAZIONI": ["trasporto", "cremazione", "eutanasia", "unghie"],
+    "CHIP": ["microchip", "chip"],
+    "CHIRURGIA": ["intervento", "castrazione", "sterilizzazione", "ovariectomia", "chirurgico"],
+    "DIAGNOSTICA PER IMMAGINI": ["rx", "radiografia", "eco", "ecografia"],
+    "FAR": ["meloxidyl", "enrox", "apoquel", "konclav", "cytopoint", "cylan", "previcox", "aristos", "mitex", "mometa", "profenacarp", "stomorgyl", "stronghold", "nexgard", "milbemax", "royal", "procox"],
+    "LABORATORIO": ["analisi", "esame", "citologia", "istologico", "emocromo", "urine", "coprologico", "giardia", "test", "feci", "titolazione", "urinocoltura"],
+    "MEDICINA": ["terapia", "flebo", "emedog", "cerenia", "cura", "day hospital", "trattamento"],
+    "VACCINI": ["vaccino", "letifend", "rabbia", "felv", "trivalente", "4dx"],
+    "VISITE": ["visita", "controllo", "dermatologica"]
 }
 
-def classify(desc, fam_val, memory: dict):
-    if pd.notna(fam_val) and str(fam_val).strip():
-        return fam_val
-    d = str(desc).lower().strip()
-    if not d:
-        return "ALTRE PRESTAZIONI"
-    for key, cat in memory.items():
-        if key.lower() in d:
-            return cat
-    for cat, keys in _RULES.items():
-        if any(k in d for k in keys):
-            return cat
-    return "ALTRE PRESTAZIONI"
+LOCAL_JSON = "studio_isa_memory.json"
 
-# === MAIN ===
-def main():
-    st.title("📊 Studio ISA – Web App (Fast v5)")
+# ========== FUNZIONI BASE ==========
 
-    uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
-    if not uploaded:
-        st.info("Carica un file per iniziare.")
-        return
+def clean_text(s):
+    return str(s).strip().lower()
 
-    # INIT
-    if "df" not in st.session_state:
-        st.session_state.df = load_excel(uploaded)
-        st.session_state.user_memory = github_load_json()
-        st.session_state.local_updates = {}  # nuove categorie non ancora salvate
-        st.session_state.pending_terms = []
+def detect_category(desc):
+    s = clean_text(desc)
+    for cat, kws in _RULES.items():
+        for kw in kws:
+            if kw in s:
+                return cat
+    return None
+
+def load_memory():
+    if os.path.exists(LOCAL_JSON):
+        with open(LOCAL_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_memory(mem):
+    with open(LOCAL_JSON, "w", encoding="utf-8") as f:
+        json.dump(mem, f, ensure_ascii=False, indent=2)
+
+def classify_missing(df):
+    df = df.copy()
+    df["FamigliaCategoria"] = df["FamigliaCategoria"].astype(str)
+    for i, row in df.iterrows():
+        if not row["FamigliaCategoria"] or row["FamigliaCategoria"].lower() == "nan":
+            desc = str(row.get("Descrizione (da archivio DrVeto)", ""))
+            cat = detect_category(desc)
+            if cat:
+                df.at[i, "FamigliaCategoria"] = cat
+    return df
+
+# ========== STREAMLIT UI ==========
+
+st.set_page_config(page_title="Studio ISA", layout="centered")
+
+# Splash iniziale
+st.markdown(
+    """
+    <div style='text-align:center;'>
+        <h1 style='color:#1E90FF;'>💼 Studio ISA</h1>
+        <p style='color:gray;'>Analisi automatizzata Excel con apprendimento intelligente</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+uploaded_file = st.file_uploader("📁 Carica il file Excel", type=["xlsx"])
+
+if uploaded_file:
+    with st.spinner("🔍 Lettura del file in corso..."):
+        df = pd.read_excel(uploaded_file)
+
+    rename_map = {}
+    for c in df.columns:
+        s = str(c).strip()
+        if s == "%": rename_map[c] = "Perc"
+        elif "netto" in s.lower() and "dopo" in s.lower(): rename_map[c] = "Netto"
+        elif "famiglia" in s.lower() and "categoria" in s.lower(): rename_map[c] = "FamigliaCategoria"
+        else: rename_map[c] = re.sub(r"[^\w]", "", s)
+    df = df.rename(columns=rename_map)
+
+    # Riempi i vuoti automaticamente
+    df = classify_missing(df)
+
+    # Carica memoria
+    memory = load_memory()
+
+    # Trova termini nuovi non ancora mappati
+    desc_terms = sorted(set(df["Descrizione_daarchivioDrVeto"].astype(str).str.strip().unique()))
+    known = set(memory.keys())
+    new_terms = [t for t in desc_terms if t and t not in known]
+
+    st.markdown(f"### 📊 {len(new_terms)} nuovi termini da classificare")
+
+    if "idx" not in st.session_state:
         st.session_state.idx = 0
-
-    df = st.session_state.df
-    user_memory = st.session_state.user_memory
-    local_updates = st.session_state.local_updates
-
-    col_desc = next((c for c in df.columns if "descrizione" in c.lower()), None)
-    col_fam  = next((c for c in df.columns if "famiglia" in c.lower()), None)
-    col_netto= next((c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower()), None)
-    col_perc = next((c for c in df.columns if c.strip() == "%"), None)
-    if not all([col_desc, col_fam, col_netto, col_perc]):
-        st.error("❌ Colonne richieste non trovate.")
-        return
-
-    df["FamigliaCategoria"] = df.apply(lambda r: classify(r[col_desc], r[col_fam], user_memory), axis=1)
-
-    # --- Nuovi termini ---
-    if not st.session_state.pending_terms:
-        uniq = sorted({str(v).strip() for v in df[col_desc].dropna().unique()}, key=lambda s: s.casefold())
-        for term in uniq:
-            t = term.lower()
-            if not any(k.lower() in t for k in user_memory.keys()) and not any(k in t for keys in _RULES.values() for k in keys):
-                st.session_state.pending_terms.append(term)
-
-    pending = st.session_state.pending_terms
-    idx = st.session_state.idx
-
-# --- blocco classificazione termine ---
-if pending:
-    # stato iniziale
     if "saved" not in st.session_state:
         st.session_state.saved = False
+    if "local_updates" not in st.session_state:
+        st.session_state.local_updates = {}
 
-    term = pending[idx]
-    total_terms = len(pending)
-    st.warning(f"🧠 Da classificare: {total_terms} termini | Corrente: {idx+1}/{total_terms}")
+    pending = new_terms
+    idx = st.session_state.idx
 
-    default_cat = "ALTRE PRESTAZIONI"
+    # ========================= CLASSIFICAZIONE =========================
+    if pending:
+        term = pending[idx]
+        total_terms = len(pending)
+        st.info(f"Termine {idx+1}/{total_terms}")
 
-    # selectbox con stato persistente
-    selected_cat = st.selectbox(
-        f"Categoria per “{term}”:",
-        list(_RULES.keys()),
-        index=list(_RULES.keys()).index(default_cat) if "current_cat" not in st.session_state else list(_RULES.keys()).index(st.session_state.current_cat),
-        key=f"select_{term}"
-    )
-    st.session_state.current_cat = selected_cat
+        default_cat = "ALTRE PRESTAZIONI"
+        cat_options = list(_RULES.keys())
 
-    col1, col2, col3 = st.columns([1, 1, 2])
+        # select persistente
+        selected_cat = st.selectbox(
+            f"Categoria per “{term}”:",
+            cat_options,
+            key=f"select_{term}"
+        )
 
-    # bottone salva
-    with col1:
-        if st.button("✅ Salva locale", key=f"save_{idx}"):
-            st.session_state.local_updates[term] = selected_cat
-            st.session_state.saved = True
-            st.session_state.current_cat = default_cat
+        c1, c2, c3 = st.columns([1, 1, 2])
 
-    # bottone salta
-    with col2:
-        if st.button("⏭️ Salta", key=f"skip_{idx}"):
-            st.session_state.saved = True
-            st.session_state.current_cat = default_cat
+        with c1:
+            if st.button("✅ Salva locale", key=f"save_{idx}"):
+                st.session_state.local_updates[term] = selected_cat
+                st.session_state.saved = True
 
-    # bottone salva su GitHub
-    with col3:
-        if st.button("💾 Salva tutto su GitHub", type="primary"):
-            st.session_state.user_memory.update(st.session_state.local_updates)
-            github_save_json(st.session_state.user_memory)
-            st.session_state.local_updates = {}
-            st.session_state.pending_terms = []
-            st.session_state.idx = 0
+        with c2:
+            if st.button("⏭️ Salta", key=f"skip_{idx}"):
+                st.session_state.saved = True
+
+        with c3:
+            if st.button("💾 Salva tutto su GitHub", type="primary"):
+                memory.update(st.session_state.local_updates)
+                save_memory(memory)
+                st.session_state.local_updates = {}
+                st.session_state.idx = 0
+                st.session_state.saved = False
+                st.success("✅ Tutti i nuovi termini salvati!")
+                st.experimental_rerun()
+
+        # --- Avanzamento automatico ---
+        if st.session_state.saved:
             st.session_state.saved = False
-            st.success("✅ Tutti i nuovi termini salvati su GitHub!")
+            st.session_state.idx += 1
+            if st.session_state.idx >= len(pending):
+                st.session_state.idx = 0
+                st.success("🎉 Tutti classificati! Ora puoi salvare definitivamente.")
             st.experimental_rerun()
 
-    # 👇 questa è la chiave del fix
-    if st.session_state.saved:
-        st.session_state.saved = False
-        st.session_state.idx += 1
-        if st.session_state.idx >= len(pending):
-            st.session_state.idx = 0
-            st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
-        st.experimental_rerun()
+        st.progress((idx + 1) / total_terms)
+    else:
+        st.success("✅ Nessun nuovo termine da classificare!")
 
-    return
+    # ========================= ELABORAZIONE =========================
+    st.divider()
+    if st.button("📈 Genera Report Studio ISA"):
+        with st.spinner("Elaborazione pivot in corso..."):
+            df["FamigliaCategoria"] = df["FamigliaCategoria"].fillna("ALTRE PRESTAZIONI")
 
-    # --- Calcolo report ---
-    st.success("✅ Tutti i termini classificati. Genero report…")
+            studio_isa = df.groupby("FamigliaCategoria", dropna=False).agg({
+                "Perc": "sum",
+                "Netto": "sum"
+            }).reset_index().rename(columns={"Perc": "Qtà"})
 
-    studio_isa = (
-        df.groupby("FamigliaCategoria", dropna=False)
-        .agg({col_perc: "sum", col_netto: "sum"})
-        .reset_index()
-        .rename(columns={col_perc: "Qtà", col_netto: "Netto"})
-    )
-    tot_qta = studio_isa["Qtà"].sum()
-    tot_netto = studio_isa["Netto"].sum()
-    studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
-    studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
-    studio_isa = pd.concat([studio_isa, pd.DataFrame([["Totale",tot_qta,tot_netto,100,100]], columns=studio_isa.columns)], ignore_index=True)
+            tot_qta = studio_isa["Qtà"].sum()
+            tot_netto = studio_isa["Netto"].sum()
+            studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
+            studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
 
-    # --- Grafico ---
-    fig, ax = plt.subplots(figsize=(8,5))
-    ax.bar(studio_isa["FamigliaCategoria"], studio_isa["Netto"], color="skyblue")
-    ax.set_title("Somma Netto per FamigliaCategoria")
-    plt.xticks(rotation=45, ha="right")
-    buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
+            # Totale
+            totale = pd.DataFrame([{
+                "FamigliaCategoria": "Totale",
+                "Qtà": tot_qta,
+                "Netto": tot_netto,
+                "% Qtà": 100,
+                "% Netto": 100
+            }])
+            studio_isa = pd.concat([studio_isa, totale], ignore_index=True)
 
-    # --- Excel ---
-    wb = Workbook()
-    ws = wb.active; ws.title = "Report"
-    start_row, start_col = 3, 2
-    total_fill = PatternFill(start_color="FFF4B084", end_color="FFF4B084", fill_type="solid")
+            st.dataframe(
+                studio_isa.style.highlight_max(axis=0, color="lightyellow")
+                            .set_properties(**{"font-weight": "bold"}, subset=["FamigliaCategoria"])
+            )
 
-    headers = ["FamigliaCategoria","Qtà","Netto","% Qtà","% Netto"]
-    for j,h in enumerate(headers,start=start_col):
-        ws.cell(row=start_row,column=j,value=h).font = Font(bold=True)
-    for i,row in enumerate(dataframe_to_rows(studio_isa,index=False,header=False),start=start_row+1):
-        for j,v in enumerate(row,start=start_col):
-            ws.cell(row=i,column=j,value=v)
-    tot_row_idx = start_row+len(studio_isa)
-    for j in range(start_col, start_col+len(headers)):
-        c=ws.cell(row=tot_row_idx,column=j)
-        c.font=Font(bold=True); c.fill=total_fill
-    img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
-    out=BytesIO(); wb.save(out)
-    st.download_button("⬇️ Scarica report Excel", data=out.getvalue(), file_name="StudioISA_Report.xlsx")
+            # Salvataggio Excel finale
+            year = datetime.now().year
+            output_name = f"Studio_ISA_{year}.xlsx"
+            studio_isa.to_excel(output_name, index=False)
+            st.success(f"✅ File generato: {output_name}")
+            with open(output_name, "rb") as f:
+                st.download_button("⬇️ Scarica Excel", f, file_name=output_name)
 
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-
+else:
+    st.info("👆 Carica un file Excel per iniziare l'analisi.")
