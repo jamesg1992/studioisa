@@ -13,7 +13,7 @@ from openpyxl.drawing.image import Image as XLImage
 
 # === CONFIG ===
 st.set_page_config(page_title="Studio ISA", page_icon="🐾", layout="centered")
-st.title("🐾 Studio ISA (Web)")
+st.title("🐾 Studio ISA")
 st.caption("Versione completa con riconoscimento automatico categorie e pivot Excel-like")
 
 
@@ -252,3 +252,4 @@ with col1:
 with col2:
     st.markdown("### Pivot per FamigliaCategoria")
     st.dataframe(pivot)
+
