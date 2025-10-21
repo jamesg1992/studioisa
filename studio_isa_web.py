@@ -9,8 +9,11 @@ _RULES = {
     "CHIP": ["microchip", "chip"],
     "CHIRURGIA": ["intervento", "castrazione", "sterilizzazione", "ovariectomia", "chirurgico"],
     "DIAGNOSTICA PER IMMAGINI": ["rx", "radiografia", "eco", "ecografia"],
-    "FAR": ["meloxidyl", "enrox", "apoquel", "konclav", "cytopoint", "cylan", "previcox", "aristos", "mitex", "mometa", "profenacarp", "stomorgyl", "stronghold", "nexgard", "milbemax", "royal", "procox"],
-    "LABORATORIO": ["analisi", "esame", "citologia", "istologico", "emocromo", "urine", "coprologico", "giardia", "test", "feci", "titolazione", "urinocoltura"],
+    "FAR": ["meloxidyl", "enrox", "apoquel", "konclav", "cytopoint", "cylan", "previcox", "aristos",
+            "mitex", "mometa", "profenacarp", "stomorgyl", "stronghold", "nexgard", "milbemax",
+            "royal", "procox"],
+    "LABORATORIO": ["analisi", "esame", "citologia", "istologico", "emocromo", "urine",
+                    "coprologico", "giardia", "test", "feci", "titolazione", "urinocoltura"],
     "MEDICINA": ["terapia", "flebo", "emedog", "cerenia", "cura", "day hospital", "trattamento"],
     "VACCINI": ["vaccino", "letifend", "rabbia", "felv", "trivalente", "4dx"],
     "VISITE": ["visita", "controllo", "dermatologica"]
@@ -19,7 +22,6 @@ _RULES = {
 LOCAL_JSON = "studio_isa_memory.json"
 
 # ========== FUNZIONI BASE ==========
-
 def clean_text(s):
     return str(s).strip().lower()
 
@@ -52,13 +54,11 @@ def classify_missing(df):
                 df.at[i, "FamigliaCategoria"] = cat
     return df
 
-# ========== STREAMLIT UI ==========
 
+# ========== STREAMLIT UI ==========
 st.set_page_config(page_title="Studio ISA", layout="centered")
 
-# Splash iniziale
-st.markdown(
-    """
+st.markdown("""
     <div style='text-align:center;'>
         <h1 style='color:#1E90FF;'>💼 Studio ISA</h1>
         <p style='color:gray;'>Analisi automatizzata Excel con apprendimento intelligente</p>
@@ -74,20 +74,31 @@ if uploaded_file:
     rename_map = {}
     for c in df.columns:
         s = str(c).strip()
-        if s == "%": rename_map[c] = "Perc"
-        elif "netto" in s.lower() and "dopo" in s.lower(): rename_map[c] = "Netto"
-        elif "famiglia" in s.lower() and "categoria" in s.lower(): rename_map[c] = "FamigliaCategoria"
-        else: rename_map[c] = re.sub(r"[^\w]", "", s)
+        if s == "%":
+            rename_map[c] = "Perc"
+        elif "netto" in s.lower() and "dopo" in s.lower():
+            rename_map[c] = "Netto"
+        elif "famiglia" in s.lower() and "categoria" in s.lower():
+            rename_map[c] = "FamigliaCategoria"
+        else:
+            rename_map[c] = re.sub(r"[^\w]", "", s)
     df = df.rename(columns=rename_map)
 
-    # Riempi i vuoti automaticamente
+    # Riempi automaticamente i vuoti
     df = classify_missing(df)
 
-    # Carica memoria
+    # Carica la memoria
     memory = load_memory()
 
-    # Trova termini nuovi non ancora mappati
-    desc_terms = sorted(set(df["Descrizione_daarchivioDrVeto"].astype(str).str.strip().unique()))
+    # Trova nuovi termini da apprendere
+    if "DescrizionedaarchivioDrVeto" in df.columns:
+        desc_col = "DescrizionedaarchivioDrVeto"
+    elif "Descrizione_daarchivioDrVeto" in df.columns:
+        desc_col = "Descrizione_daarchivioDrVeto"
+    else:
+        desc_col = df.columns[-1]
+
+    desc_terms = sorted(set(df[desc_col].astype(str).str.strip().unique()))
     known = set(memory.keys())
     new_terms = [t for t in desc_terms if t and t not in known]
 
@@ -95,8 +106,6 @@ if uploaded_file:
 
     if "idx" not in st.session_state:
         st.session_state.idx = 0
-    if "saved" not in st.session_state:
-        st.session_state.saved = False
     if "local_updates" not in st.session_state:
         st.session_state.local_updates = {}
 
@@ -109,45 +118,43 @@ if uploaded_file:
         total_terms = len(pending)
         st.info(f"Termine {idx+1}/{total_terms}")
 
-        default_cat = "ALTRE PRESTAZIONI"
-        cat_options = list(_RULES.keys())
-
-        # select persistente
         selected_cat = st.selectbox(
             f"Categoria per “{term}”:",
-            cat_options,
+            list(_RULES.keys()),
             key=f"select_{term}"
         )
 
-        c1, c2, c3 = st.columns([1, 1, 2])
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
 
         with c1:
             if st.button("✅ Salva locale", key=f"save_{idx}"):
                 st.session_state.local_updates[term] = selected_cat
-                st.session_state.saved = True
+                st.success(f"Salvato: '{term}' → {selected_cat}")
 
         with c2:
-            if st.button("⏭️ Salta", key=f"skip_{idx}"):
-                st.session_state.saved = True
+            if st.button("👉 Avanti", key=f"next_{idx}"):
+                st.session_state.idx += 1
+                if st.session_state.idx >= len(pending):
+                    st.session_state.idx = 0
+                    st.success("🎉 Tutti classificati!")
+                st.experimental_rerun()
 
         with c3:
+            if st.button("⏭️ Salta", key=f"skip_{idx}"):
+                st.session_state.idx += 1
+                if st.session_state.idx >= len(pending):
+                    st.session_state.idx = 0
+                    st.success("🎉 Tutti classificati!")
+                st.experimental_rerun()
+
+        with c4:
             if st.button("💾 Salva tutto su GitHub", type="primary"):
                 memory.update(st.session_state.local_updates)
                 save_memory(memory)
                 st.session_state.local_updates = {}
                 st.session_state.idx = 0
-                st.session_state.saved = False
                 st.success("✅ Tutti i nuovi termini salvati!")
                 st.experimental_rerun()
-
-        # --- Avanzamento automatico ---
-        if st.session_state.saved:
-            st.session_state.saved = False
-            st.session_state.idx += 1
-            if st.session_state.idx >= len(pending):
-                st.session_state.idx = 0
-                st.success("🎉 Tutti classificati! Ora puoi salvare definitivamente.")
-            st.experimental_rerun()
 
         st.progress((idx + 1) / total_terms)
     else:
@@ -169,7 +176,6 @@ if uploaded_file:
             studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
             studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
 
-            # Totale
             totale = pd.DataFrame([{
                 "FamigliaCategoria": "Totale",
                 "Qtà": tot_qta,
@@ -184,7 +190,6 @@ if uploaded_file:
                             .set_properties(**{"font-weight": "bold"}, subset=["FamigliaCategoria"])
             )
 
-            # Salvataggio Excel finale
             year = datetime.now().year
             output_name = f"Studio_ISA_{year}.xlsx"
             studio_isa.to_excel(output_name, index=False)
