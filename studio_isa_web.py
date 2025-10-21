@@ -88,7 +88,7 @@ def classify(desc, fam_value, memory):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Web App (Fast Mode 🚀)")
+    st.title("📊 Studio ISA – Web App (Fast v2 🚀)")
 
     uploaded = st.file_uploader("📁 Seleziona il file Excel", type=["xlsx", "xls"])
     if not uploaded:
@@ -101,6 +101,7 @@ def main():
         st.session_state.user_memory = github_load_json()
         st.session_state.new_terms = {}
         st.session_state.idx = 0
+        st.session_state.refresh_trigger = False
 
     df = st.session_state.df
     user_memory = st.session_state.user_memory
@@ -142,10 +143,8 @@ def main():
                     user_memory[term] = cat
                     st.session_state.user_memory = user_memory
                     st.session_state.idx += 1
-                    st.session_state.refresh_trigger = not st.session_state.get("refresh_trigger", False)
+                    st.session_state.refresh_trigger = not st.session_state.refresh_trigger
                     st.toast(f"💾 '{term}' salvato come {cat}")
-                    st.experimental_set_query_params(refresh="false")
-                    st.experimental_update()
             with col2:
                 if st.button("⏹️ Interrompi"):
                     st.stop()
@@ -154,7 +153,6 @@ def main():
                     github_save_json(user_memory)
                     st.session_state.idx = 0
                     st.toast("✅ Tutto salvato su GitHub!")
-                    st.experimental_rerun()
             return
         else:
             st.success("🎉 Tutti i nuovi termini sono stati classificati.")
@@ -217,4 +215,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
