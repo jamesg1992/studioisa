@@ -138,27 +138,29 @@ def main():
         idx = st.session_state.current_idx
 
         if idx < len(terms):
-            current_term = terms[idx]
-            st.markdown(f"### 🆕 {idx+1}/{len(terms)} — '{current_term}'")
-            cat = st.selectbox("Seleziona la categoria corretta:", list(_RULES.keys()), key=f"term_{current_term}")
+    current_term = terms[idx]
+    st.markdown(f"### 🆕 {idx+1}/{len(terms)} — '{current_term}'")
+    cat = st.selectbox("Seleziona la categoria corretta:", list(_RULES.keys()), key=f"term_{current_term}")
 
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                if st.button("✅ Salva e passa al prossimo"):
-                    user_memory[current_term] = cat
-                    github_save_json(user_memory)
-                    st.session_state.current_idx += 1
-                    st.rerun()
-            with col2:
-                if st.button("⏹️ Interrompi"):
-                    st.success("Salvataggio interrotto. I progressi sono memorizzati.")
-                    st.stop()
-            return
-        else:
-            st.success("🎉 Tutti i nuovi termini sono stati classificati e salvati!")
-            del st.session_state.pending_terms
-            del st.session_state.current_idx
-
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("✅ Salva locale"):
+            user_memory[current_term] = cat
+            st.session_state.current_idx += 1
+            st.session_state.user_memory = user_memory
+            st.rerun()
+    with col2:
+        if st.button("⏹️ Interrompi"):
+            st.success("Sessione interrotta. Puoi riprendere in seguito.")
+            st.stop()
+    with col3:
+        if st.button("💾 Fine e salva su GitHub"):
+            github_save_json(st.session_state.user_memory)
+            st.success("✅ Tutto salvato su GitHub!")
+            st.session_state.clear()
+            st.rerun()
+    return
+    
     # === ELABORAZIONE ===
     st.success("✅ File analizzato correttamente! Creazione tabella e pivot in corso...")
 
@@ -243,4 +245,5 @@ def main():
 # === MAIN ===
 if __name__ == "__main__":
     main()
+
 
