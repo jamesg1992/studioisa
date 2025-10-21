@@ -142,9 +142,10 @@ def main():
                     user_memory[term] = cat
                     st.session_state.user_memory = user_memory
                     st.session_state.idx += 1
-                    st.experimental_set_query_params(refresh="false")
+                    st.session_state.refresh_trigger = not st.session_state.get("refresh_trigger", False)
                     st.toast(f"💾 '{term}' salvato come {cat}")
-                    st.experimental_rerun()
+                    st.experimental_set_query_params(refresh="false")
+                    st.experimental_update()
             with col2:
                 if st.button("⏹️ Interrompi"):
                     st.stop()
@@ -216,3 +217,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
