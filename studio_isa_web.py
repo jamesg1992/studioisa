@@ -110,21 +110,38 @@ if desc_col:
                 df.at[i, "FamigliaCategoria"] = categoria
 
     if new_terms:
-        st.warning(f"Trovati {len(new_terms)} termini sconosciuti.")
-        st.markdown("Seleziona la categoria corretta per ognuno:")
-        for term in new_terms:
-            cat = st.selectbox(f"➜ {term}", list(_RULES.keys()), index=0, key=term)
-            new_terms[term] = cat
+    st.warning(f"Trovati {len(new_terms)} termini sconosciuti da classificare.")
 
-        if st.button("💾 Salva nuove associazioni"):
-            user_memory.update(new_terms)
-            with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(user_memory, f, ensure_ascii=False, indent=2)
-            st.success(f"✅ Salvate {len(new_terms)} nuove parole nel dizionario.")
-            st.rerun()
+    # Memorizza la lista di termini nella sessione
+    if "pending_terms" not in st.session_state:
+        st.session_state.pending_terms = list(new_terms.keys())
+        st.session_state.current_idx = 0
 
-    filled = df["FamigliaCategoria"].eq("nan").sum()
-    st.success(f"Completate automaticamente {filled} righe.")
+    terms = st.session_state.pending_terms
+    idx = st.session_state.current_idx
+
+    if idx < len(terms):
+        current_term = terms[idx]
+        st.markdown(f"### 🆕 {idx+1}/{len(terms)} — '{current_term}'")
+        cat = st.selectbox("Seleziona la categoria corretta:", list(_RULES.keys()), key=f"term_{current_term}")
+
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if st.button("✅ Salva e passa al prossimo"):
+                user_memory[current_term] = cat
+                with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+                    json.dump(user_memory, f, ensure_ascii=False, indent=2)
+                st.session_state.current_idx += 1
+                st.experimental_rerun()
+
+        with col2:
+            if st.button("⏹️ Interrompi"):
+                st.success("Salvataggio interrotto. I progressi sono memorizzati.")
+                st.stop()
+    else:
+        st.success("🎉 Tutti i nuovi termini sono stati classificati e salvati!")
+        del st.session_state.pending_terms
+        del st.session_state.current_idx
 
 # === CREA TABELLA STUDIO ISA ===
 studio_isa = (
@@ -236,3 +253,4 @@ with col1:
 with col2:
     st.markdown("### Pivot per FamigliaCategoria")
     st.dataframe(pivot)
+
