@@ -121,37 +121,31 @@ def main():
     pending = st.session_state.pending_terms
     idx = st.session_state.idx
 
-    if pending:
-        term = pending[idx]
-        st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
-        cat = st.selectbox(f"Categoria per “{term}”:", list(_RULES.keys()), key=f"cat_{idx}")
+# --- blocco classificazione termine ---
+if pending:
+    term = pending[idx]
+    st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
 
-        c1, c2, c3 = st.columns([1,1,2])
-        with c1:
-            if st.button("✅ Salva locale", key=f"save_{idx}"):
-                local_updates[term] = cat
-                st.session_state.local_updates = local_updates
-                st.session_state.idx += 1
-                if st.session_state.idx >= len(pending):
-                    st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
-                st.rerun()
+    # 👇 chiave dinamica per forzare reset selectbox ad ogni nuovo termine
+    cat_key = f"cat_select_{term}_{idx}"
+    selected_cat = st.selectbox(
+        f"Categoria per “{term}”:",
+        list(_RULES.keys()),
+        key=cat_key,
+        index=None,
+        placeholder="Seleziona categoria..."
+    )
 
-        with c2:
-            if st.button("⏭️ Salta"):
-                st.session_state.idx += 1
-                if st.session_state.idx >= len(pending):
-                    st.session_state.idx = 0
-                st.rerun()
-
-        with c3:
-            if st.button("💾 Salva tutto su GitHub", type="primary"):
-                user_memory.update(local_updates)
-                github_save_json(user_memory)
-                st.session_state.user_memory = user_memory
-                st.session_state.local_updates = {}
-                st.session_state.pending_terms = []
-                st.success("✅ Tutti i nuovi termini salvati su GitHub!")
-                st.rerun()
+    c1, c2, c3 = st.columns([1,1,2])
+    with c1:
+        # salva e passa subito al successivo
+        if st.button("✅ Salva locale", key=f"save_{term}_{idx}") and selected_cat:
+            local_updates[term] = selected_cat
+            st.session_state.local_updates = local_updates
+            st.session_state.idx += 1
+            if st.session_state.idx >= len(pending):
+                st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
+            st.rerun()
         return
 
     # --- Calcolo report ---
@@ -198,3 +192,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
