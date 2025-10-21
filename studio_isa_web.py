@@ -120,7 +120,11 @@ def main():
 
     pending = st.session_state.pending_terms
     idx = st.session_state.idx
-
+# Se l'indice è fuori range (es. dopo l'ultimo), resetta a 0
+    if idx >= len(pending):
+        st.session_state.idx = 0
+        idx = 0
+    
     if pending:
         term = pending[idx]
         st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
@@ -198,3 +202,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
