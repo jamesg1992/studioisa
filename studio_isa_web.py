@@ -148,35 +148,54 @@ if uploaded_file:
         with st.spinner("Elaborazione pivot in corso..."):
             df["FamigliaCategoria"] = df["FamigliaCategoria"].fillna("ALTRE PRESTAZIONI")
 
-            studio_isa = df.groupby("FamigliaCategoria", dropna=False).agg({
-                "Perc": "sum",
-                "Netto": "sum"
-            }).reset_index().rename(columns={"Perc": "Qtà"})
-
-            tot_qta = studio_isa["Qtà"].sum()
-            tot_netto = studio_isa["Netto"].sum()
-            studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
-            studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
-
-            totale = pd.DataFrame([{
-                "FamigliaCategoria": "Totale",
-                "Qtà": tot_qta,
-                "Netto": tot_netto,
-                "% Qtà": 100,
-                "% Netto": 100
-            }])
-            studio_isa = pd.concat([studio_isa, totale], ignore_index=True)
-
-            st.dataframe(
-                studio_isa.style.highlight_max(axis=0, color="lightyellow")
-                            .set_properties(**{"font-weight": "bold"}, subset=["FamigliaCategoria"])
+            # === CREA TABELLA STUDIO ISA (aggregata) ===
+            studio_isa = (
+                df.groupby("FamigliaCategoria", dropna=False)
+                .agg({"Perc": "sum", "Netto": "sum"})
+                .reset_index()
+                .rename(columns={"Perc": "Qtà"})
             )
 
+            # Calcoli percentuali
+            tot_qta = studio_isa["Qtà"].sum()
+            tot_netto = studio_isa["Netto"].sum()
+            studio_isa["% Qtà"] = (studio_isa["Qtà"] / tot_qta * 100).round(2)
+            studio_isa["% Netto"] = (studio_isa["Netto"] / tot_netto * 100).round(2)
+
+            # Riga totale
+            totale = pd.DataFrame(
+                [{
+                    "FamigliaCategoria": "Totale",
+                    "Qtà": tot_qta,
+                    "Netto": tot_netto,
+                    "% Qtà": 100.00,
+                    "% Netto": 100.00
+                }]
+            )
+            studio_isa = pd.concat([studio_isa, totale], ignore_index=True)
+
+            # === Mostra tabella con formattazione ===
+            st.subheader("📄 Tabella Studio ISA")
+            st.dataframe(
+                studio_isa.style
+                    .apply(lambda r: ['background-color: #fff8b3' if r["FamigliaCategoria"] == "Totale" else '' for _ in r], axis=1)
+                    .set_properties(subset=["FamigliaCategoria"], **{"font-weight": "bold"})
+                    .format({"Qtà": "{:,.0f}", "Netto": "{:,.2f}", "% Qtà": "{:.2f}", "% Netto": "{:.2f}"})
+            )
+
+            # === Grafico (st.bar_chart interattivo) ===
+            st.subheader("📊 Grafico: Qtà e Netto per FamigliaCategoria")
+            chart_data = studio_isa[studio_isa["FamigliaCategoria"] != "Totale"]
+            st.bar_chart(chart_data.set_index("FamigliaCategoria")[["Qtà", "Netto"]])
+
+            # === Salvataggio Excel finale ===
             year = datetime.now().year
             output_name = f"Studio_ISA_{year}.xlsx"
             studio_isa.to_excel(output_name, index=False)
+
             st.success(f"✅ File generato: {output_name}")
             with open(output_name, "rb") as f:
                 st.download_button("⬇️ Scarica Excel", f, file_name=output_name)
 else:
     st.info("👆 Carica un file Excel per iniziare l'analisi.")
+
