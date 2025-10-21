@@ -1,48 +1,42 @@
 import streamlit as st
 import pandas as pd
-import xlwings as xw
-import re
+import matplotlib.pyplot as plt
 import io
 from datetime import datetime
+import re
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.drawing.image import Image as XLImage
 
 st.set_page_config(page_title="Studio ISA", page_icon="🐾", layout="centered")
 
 st.title("🐾 Studio ISA")
-st.write("Carica il file Excel per generare automaticamente la tabella pivot e il report.")
+st.write("Carica il file Excel per generare automaticamente la tabella Studio ISA, la pivot e il grafico.")
 
-# === UPLOAD FILE ===
 uploaded_file = st.file_uploader("📤 Carica file Excel", type=["xlsx", "xls"])
-
-# barra di progresso (placeholder)
-progress_text = st.empty()
 progress_bar = st.progress(0)
+
+def map_and_clean_columns(cols):
+    rename_map = {}
+    for c in cols:
+        s = str(c).strip()
+        if s == "%":
+            rename_map[c] = "Perc"
+        elif "netto" in s.lower() and "dopo" in s.lower():
+            rename_map[c] = "Netto"
+        elif ("famiglia" in s.lower() and "categoria" in s.lower()) or ("famiglia" in s.lower() and "/" in s):
+            rename_map[c] = "FamigliaCategoria"
+        else:
+            cleaned = re.sub(r'[^\w]', '', s)
+            rename_map[c] = cleaned if cleaned else "Col"
+    return rename_map
 
 if uploaded_file:
     try:
-        # === LEGGE IL FILE ===
-        progress_text.text("🔍 Lettura del file in corso...")
-        df = pd.read_excel(uploaded_file)
         progress_bar.progress(10)
-
-        # === FUNZIONE DI MAPPATURA COLONNE ===
-        def map_and_clean_columns(cols):
-            rename_map = {}
-            for c in cols:
-                s = str(c).strip()
-                if s == "%":
-                    rename_map[c] = "Perc"
-                elif "netto" in s.lower() and "dopo" in s.lower():
-                    rename_map[c] = "Netto"
-                elif ("famiglia" in s.lower() and "categoria" in s.lower()) or ("famiglia" in s.lower() and "/" in s):
-                    rename_map[c] = "FamigliaCategoria"
-                else:
-                    cleaned = re.sub(r'[^\w]', '', s)
-                    rename_map[c] = cleaned if cleaned else "Col"
-            return rename_map
-
+        df = pd.read_excel(uploaded_file)
         rename_map = map_and_clean_columns(df.columns)
         df = df.rename(columns=rename_map)
-
         required = ['FamigliaCategoria', 'Perc', 'Netto']
         missing = [r for r in required if r not in df.columns]
         if missing:
@@ -52,85 +46,78 @@ if uploaded_file:
         df['FamigliaCategoria'] = df['FamigliaCategoria'].astype(str).str.strip()
         progress_bar.progress(25)
 
-        # === CREA FILE EXCEL IN MEMORIA ===
-        output = io.BytesIO()
-        app = xw.App(visible=False)
-        wb = app.books.add()
-
-        # --- Dati originali ---
-        ws_data = wb.sheets.add("DatiOriginali")
-        ws_data.range("A1").value = df
-        progress_bar.progress(40)
-
-        # --- Tabella Excel ---
-        last_row, last_col = df.shape
-        rng = ws_data.range((1,1), (last_row+1, last_col)).api
-        tbl = ws_data.api.ListObjects.Add(1, rng, 0, 1, 1)
-        tbl.Name = "TblDati"
-        tbl.ShowHeaders = True
-
-        # --- Foglio report ---
-        ws_report = wb.sheets.add("Report")
-        ws_report.activate()
-
-        # --- Tabella Studio ISA ---
+        # === Tabella Studio ISA ===
         studio_isa = df.groupby('FamigliaCategoria', dropna=False).agg({
             'Perc': 'sum',
             'Netto': 'sum'
-        }).reset_index().rename(columns={'Perc':'Qtà'})
+        }).reset_index().rename(columns={'Perc': 'Qtà'})
 
         tot_qta = studio_isa['Qtà'].sum()
         tot_netto = studio_isa['Netto'].sum()
 
-        studio_isa['% Qtà'] = (studio_isa['Qtà'] / tot_qta * 100).round(2) if tot_qta != 0 else 0
-        studio_isa['% Netto'] = (studio_isa['Netto'] / tot_netto * 100).round(2) if tot_netto != 0 else 0
+        studio_isa['% Qtà'] = (studio_isa['Qtà'] / tot_qta * 100).round(2)
+        studio_isa['% Netto'] = (studio_isa['Netto'] / tot_netto * 100).round(2)
 
-        isa_start_row = 3
-        isa_start_col = 2
-        ws_report.range((isa_start_row, isa_start_col)).value = ["FamigliaCategoria", "Qtà", "Netto", "% Qtà", "% Netto"]
-        ws_report.range((isa_start_row+1, isa_start_col)).value = studio_isa.values
+        total_row = pd.DataFrame({
+            'FamigliaCategoria': ['Totale'],
+            'Qtà': [tot_qta],
+            'Netto': [tot_netto],
+            '% Qtà': [100],
+            '% Netto': [100]
+        })
+        studio_isa = pd.concat([studio_isa, total_row], ignore_index=True)
 
-        # Grassetto intestazioni
-        ws_report.range((isa_start_row, isa_start_col), (isa_start_row, isa_start_col+4)).api.Font.Bold = True
-        progress_bar.progress(60)
+        progress_bar.progress(50)
 
-        # Totali
-        tot_row_idx = isa_start_row + 1 + len(studio_isa)
-        totali = ["Totale",
-                studio_isa['Qtà'].sum(),
-                studio_isa['Netto'].sum(),
-                100,
-                100]
-        ws_report.range((tot_row_idx, isa_start_col)).value = totali
-        ws_report.range((tot_row_idx, isa_start_col), (tot_row_idx, isa_start_col+4)).api.Font.Bold = True
+        # === Crea Pivot (pandas style) ===
+        pivot = pd.pivot_table(
+            df,
+            values=['Perc', 'Netto'],
+            index=['FamigliaCategoria'],
+            aggfunc='sum',
+            fill_value=0
+        ).reset_index()
+        pivot = pivot.rename(columns={'Perc': 'Somma_Qta', 'Netto': 'Somma_Netto'})
 
-        # === PIVOT ===
-        pc = wb.api.PivotCaches().Create(SourceType=1, SourceData=tbl.Range)
-        pivot_start_row = isa_start_row
-        pivot_start_col = isa_start_col + 7
-        pivot_dest = ws_report.range((pivot_start_row, pivot_start_col)).api
-
-        pt = pc.CreatePivotTable(TableDestination=pivot_dest, TableName="PivotFamiglia")
-        pt.PivotFields("FamigliaCategoria").Orientation = 1
-        pt.AddDataField(pt.PivotFields("Perc"), "Somma_Qta", -4157)
-        pt.AddDataField(pt.PivotFields("Netto"), "Somma_Netto", -4157)
-
-        # === GRAFICO ===
-        chart_obj = ws_report.api.ChartObjects().Add(
-            Left=ws_report.range((pivot_start_row, pivot_start_col)).api.Left,
-            Top=ws_report.range((pivot_start_row + pt.TableRange2.Rows.Count + 2, pivot_start_col)).api.Top,
-            Width=600,
-            Height=350
+        # === Grafico ===
+        fig, ax = plt.subplots(figsize=(8, 4))
+        pivot.plot(
+            kind='bar',
+            x='FamigliaCategoria',
+            y=['Somma_Qta', 'Somma_Netto'],
+            ax=ax
         )
-        chart = chart_obj.Chart
-        chart.SetSourceData(pt.TableRange2)
-        chart.ChartType = 51  # xlColumnClustered
-        chart.HasTitle = True
-        chart.ChartTitle.Text = "Pivot - Somma_Qta e Somma_Netto per FamigliaCategoria"
+        ax.set_title("Somma_Qta e Somma_Netto per FamigliaCategoria")
+        ax.set_ylabel("Valore")
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
 
-        progress_bar.progress(90)
+        img_buf = io.BytesIO()
+        plt.savefig(img_buf, format='png')
+        plt.close(fig)
+        img_buf.seek(0)
+        progress_bar.progress(75)
 
-        # === NOME FILE OUTPUT ===
+        # === Crea Excel con openpyxl ===
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = "Report"
+
+        ws1.append(["Studio ISA"])
+        for r in dataframe_to_rows(studio_isa, index=False, header=True):
+            ws1.append(r)
+
+        ws1.append([])
+        ws1.append(["Pivot"])
+        for r in dataframe_to_rows(pivot, index=False, header=True):
+            ws1.append(r)
+
+        # Inserisci grafico come immagine
+        img = XLImage(img_buf)
+        img.anchor = f"A{len(ws1['A']) + 2}"
+        ws1.add_image(img)
+
+        # === Trova anno da colonna data (se esiste) ===
         anno = None
         for c in df.columns:
             if "data" in c.lower():
@@ -145,23 +132,19 @@ if uploaded_file:
 
         output_filename = f"Studio_ISA_{anno}.xlsx"
 
-        # === SALVA E PREPARA DOWNLOAD ===
+        # === Salva in memoria e consenti il download ===
+        output = io.BytesIO()
         wb.save(output)
-        wb.close()
-        app.quit()
-        progress_bar.progress(100)
+        output.seek(0)
 
+        progress_bar.progress(100)
         st.success("✅ Elaborazione completata!")
         st.download_button(
             label="📥 Scarica file Excel",
-            data=output.getvalue(),
+            data=output,
             file_name=output_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     except Exception as e:
         st.error(f"Errore: {e}")
-        try:
-            app.quit()
-        except:
-            pass
