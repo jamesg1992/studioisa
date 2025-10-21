@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
-import json, os, re, time
+import json, os, re
 from datetime import datetime
+from streamlit.runtime.scriptrunner import RerunException, RerunData
 
 # ========== CONFIG ==========
 _RULES = {
@@ -9,9 +10,9 @@ _RULES = {
     "CHIP": ["microchip", "chip"],
     "CHIRURGIA": ["intervento", "castrazione", "sterilizzazione", "ovariectomia", "chirurgico"],
     "DIAGNOSTICA PER IMMAGINI": ["rx", "radiografia", "eco", "ecografia"],
-    "FAR": ["meloxidyl", "enrox", "apoquel", "konclav", "cytopoint", "cylan", "previcox", "aristos",
-            "mitex", "mometa", "profenacarp", "stomorgyl", "stronghold", "nexgard", "milbemax",
-            "royal", "procox"],
+    "FAR": ["meloxidyl", "enrox", "apoquel", "konclav", "cytopoint", "cylan", "previcox",
+            "aristos", "mitex", "mometa", "profenacarp", "stomorgyl", "stronghold", "nexgard",
+            "milbemax", "royal", "procox"],
     "LABORATORIO": ["analisi", "esame", "citologia", "istologico", "emocromo", "urine",
                     "coprologico", "giardia", "test", "feci", "titolazione", "urinocoltura"],
     "MEDICINA": ["terapia", "flebo", "emedog", "cerenia", "cura", "day hospital", "trattamento"],
@@ -21,9 +22,8 @@ _RULES = {
 
 LOCAL_JSON = "studio_isa_memory.json"
 
-# ========== FUNZIONI BASE ==========
-def clean_text(s):
-    return str(s).strip().lower()
+
+def clean_text(s): return str(s).strip().lower()
 
 def detect_category(desc):
     s = clean_text(desc)
@@ -55,15 +55,14 @@ def classify_missing(df):
     return df
 
 
-# ========== STREAMLIT UI ==========
+# ===== STREAMLIT =====
 st.set_page_config(page_title="Studio ISA", layout="centered")
 
-st.markdown("""
-    <div style='text-align:center;'>
-        <h1 style='color:#1E90FF;'>💼 Studio ISA</h1>
-        <p style='color:gray;'>Analisi automatizzata Excel con apprendimento intelligente</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align:center;'><h1 style='color:#1E90FF;'>💼 Studio ISA</h1>"
+    "<p style='color:gray;'>Analisi automatizzata Excel con apprendimento intelligente</p></div>",
+    unsafe_allow_html=True
+)
 
 uploaded_file = st.file_uploader("📁 Carica il file Excel", type=["xlsx"])
 
@@ -74,45 +73,29 @@ if uploaded_file:
     rename_map = {}
     for c in df.columns:
         s = str(c).strip()
-        if s == "%":
-            rename_map[c] = "Perc"
-        elif "netto" in s.lower() and "dopo" in s.lower():
-            rename_map[c] = "Netto"
-        elif "famiglia" in s.lower() and "categoria" in s.lower():
-            rename_map[c] = "FamigliaCategoria"
-        else:
-            rename_map[c] = re.sub(r"[^\w]", "", s)
+        if s == "%": rename_map[c] = "Perc"
+        elif "netto" in s.lower() and "dopo" in s.lower(): rename_map[c] = "Netto"
+        elif "famiglia" in s.lower() and "categoria" in s.lower(): rename_map[c] = "FamigliaCategoria"
+        else: rename_map[c] = re.sub(r"[^\w]", "", s)
     df = df.rename(columns=rename_map)
 
-    # Riempi automaticamente i vuoti
     df = classify_missing(df)
-
-    # Carica la memoria
     memory = load_memory()
 
-    # Trova nuovi termini da apprendere
-    if "DescrizionedaarchivioDrVeto" in df.columns:
-        desc_col = "DescrizionedaarchivioDrVeto"
-    elif "Descrizione_daarchivioDrVeto" in df.columns:
-        desc_col = "Descrizione_daarchivioDrVeto"
-    else:
-        desc_col = df.columns[-1]
-
+    desc_col = next((c for c in df.columns if "descrizione" in c.lower()), df.columns[-1])
     desc_terms = sorted(set(df[desc_col].astype(str).str.strip().unique()))
     known = set(memory.keys())
     new_terms = [t for t in desc_terms if t and t not in known]
 
     st.markdown(f"### 📊 {len(new_terms)} nuovi termini da classificare")
 
-    if "idx" not in st.session_state:
-        st.session_state.idx = 0
-    if "local_updates" not in st.session_state:
-        st.session_state.local_updates = {}
+    if "idx" not in st.session_state: st.session_state.idx = 0
+    if "local_updates" not in st.session_state: st.session_state.local_updates = {}
 
     pending = new_terms
     idx = st.session_state.idx
 
-    # ========================= CLASSIFICAZIONE =========================
+    # ================== CLASSIFICAZIONE ==================
     if pending:
         term = pending[idx]
         total_terms = len(pending)
@@ -121,7 +104,7 @@ if uploaded_file:
         selected_cat = st.selectbox(
             f"Categoria per “{term}”:",
             list(_RULES.keys()),
-            key=f"select_{term}"
+            key=f"select_{idx}"
         )
 
         c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
@@ -129,7 +112,7 @@ if uploaded_file:
         with c1:
             if st.button("✅ Salva locale", key=f"save_{idx}"):
                 st.session_state.local_updates[term] = selected_cat
-                st.success(f"Salvato: '{term}' → {selected_cat}")
+                st.toast(f"💾 Salvato '{term}' → {selected_cat}")
 
         with c2:
             if st.button("👉 Avanti", key=f"next_{idx}"):
@@ -137,15 +120,14 @@ if uploaded_file:
                 if st.session_state.idx >= len(pending):
                     st.session_state.idx = 0
                     st.success("🎉 Tutti classificati!")
-                st.experimental_rerun()
+                raise RerunException(RerunData(widget_states=None))
 
         with c3:
             if st.button("⏭️ Salta", key=f"skip_{idx}"):
                 st.session_state.idx += 1
                 if st.session_state.idx >= len(pending):
                     st.session_state.idx = 0
-                    st.success("🎉 Tutti classificati!")
-                st.experimental_rerun()
+                raise RerunException(RerunData(widget_states=None))
 
         with c4:
             if st.button("💾 Salva tutto su GitHub", type="primary"):
@@ -154,13 +136,13 @@ if uploaded_file:
                 st.session_state.local_updates = {}
                 st.session_state.idx = 0
                 st.success("✅ Tutti i nuovi termini salvati!")
-                st.experimental_rerun()
+                raise RerunException(RerunData(widget_states=None))
 
         st.progress((idx + 1) / total_terms)
     else:
         st.success("✅ Nessun nuovo termine da classificare!")
 
-    # ========================= ELABORAZIONE =========================
+    # ================== REPORT ==================
     st.divider()
     if st.button("📈 Genera Report Studio ISA"):
         with st.spinner("Elaborazione pivot in corso..."):
@@ -196,6 +178,5 @@ if uploaded_file:
             st.success(f"✅ File generato: {output_name}")
             with open(output_name, "rb") as f:
                 st.download_button("⬇️ Scarica Excel", f, file_name=output_name)
-
 else:
     st.info("👆 Carica un file Excel per iniziare l'analisi.")
