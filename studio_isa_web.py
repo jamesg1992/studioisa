@@ -47,7 +47,7 @@ def github_save_json(data):
         }
         res = requests.put(url, headers=headers, data=json.dumps(payload))
         if res.status_code in (200, 201):
-            st.toast("✅ Dizionario aggiornato su GitHub!")
+            st.success("✅ Dizionario aggiornato su GitHub!")
         else:
             st.error(f"❌ Errore aggiornando su GitHub: {res.status_code}")
     except Exception as e:
@@ -144,7 +144,7 @@ def main():
                     st.session_state.user_memory = user_memory
                     st.session_state.idx += 1
                     st.session_state.refresh_trigger = not st.session_state.refresh_trigger
-                    st.toast(f"💾 '{term}' salvato come {cat}")
+                    st.success(f"💾 '{term}' salvato come {cat}")
             with col2:
                 if st.button("⏹️ Interrompi"):
                     st.stop()
@@ -215,3 +215,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
