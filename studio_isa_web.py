@@ -81,7 +81,7 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Web App (Fast v5)")
+    st.title("📊 Studio ISA - Alcyon Italia")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
@@ -198,8 +198,9 @@ def main():
         c.font=Font(bold=True); c.fill=total_fill
     img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
     out=BytesIO(); wb.save(out)
-    st.download_button("⬇️ Scarica report Excel", data=out.getvalue(), file_name="StudioISA_Report.xlsx")
+    st.download_button("⬇️ Scarica Studio ISA Excel", data=out.getvalue(), file_name="StudioISA_.xlsx")
 
 if __name__ == "__main__":
     main()
+
 
