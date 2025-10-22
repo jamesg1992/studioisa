@@ -58,7 +58,7 @@ def github_load_json():
 def github_save_json(data: dict):
     try:
         if not (GITHUB_REPO and GITHUB_FILE and GITHUB_TOKEN):
-            st.info("ℹ️ GitHub non configurato.")
+            st.info("ℹ️ Cloud non configurato.")
             return
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
@@ -69,7 +69,7 @@ def github_save_json(data: dict):
         if sha: payload["sha"] = sha
         requests.put(url, headers=headers, data=json.dumps(payload))
     except Exception as e:
-        st.error(f"❌ Salvataggio GitHub fallito: {e}")
+        st.error(f"❌ Salvataggio sul Cloud fallito: {e}")
 
 @st.cache_data(show_spinner=False)
 def load_excel(f): 
@@ -175,7 +175,7 @@ def main():
             with c2:
                 skip = st.form_submit_button("⏭️ Salta")
             with c3:
-                save_cloud = st.form_submit_button("💾 Salva tutto su Cloud")
+                save_cloud = st.form_submit_button("💾 Salva tutto sul Cloud")
 
         if save_next:
             updates[term] = cat
@@ -195,7 +195,7 @@ def main():
             st.session_state.user_memory = mem
             st.session_state.local_updates = {}
             st.session_state.idx = 0
-            st.success("✅ Dizionario aggiornato su GitHub!")
+            st.success("✅ Dizionario aggiornato sul Cloud!")
             st.rerun()
 
         st.stop()
@@ -256,3 +256,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
