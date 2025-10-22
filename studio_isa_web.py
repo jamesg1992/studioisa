@@ -81,7 +81,7 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Web App (Fast v6)")
+    st.title("📊 Studio ISA – Dr.Veto e VetsGo")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
@@ -212,4 +212,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
