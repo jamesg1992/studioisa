@@ -9,13 +9,13 @@ from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font, PatternFill
 import matplotlib.pyplot as plt
 
-# ───────────── CONFIG ─────────────
-st.set_page_config(page_title="Studio ISA - Alcyon Italia", layout="wide")
+# === CONFIG ===
+st.set_page_config(page_title="Studio ISA", layout="wide")
 GITHUB_FILE = os.getenv("GITHUB_FILE", "keywords_memory.json")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-# ───────────── RULES (Tipo A e B) ─────────────
+# === REGOLE TIPO A ===
 RULES_A = {
     "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt","urine"],
     "VISITE": ["visita","controllo","consulto","dermatologic"],
@@ -28,6 +28,7 @@ RULES_A = {
     "ALTRE PRESTAZIONI": ["trasporto","eutanasia","unghie","cremazion","otoematoma","pet corner","ricette","medicazione","manualità"]
 }
 
+# === REGOLE TIPO B ===
 RULES_B = {
     "Domicilio": ["visite domiciliari","allevamenti","domicilio"],
     "Terapia": ["visite ambulatoriali","terapia","trattamenti","vaccinazioni","ambulatorio","manualità","pet corner","visite","ricette","medicazione","microchip","controllo"],
@@ -40,7 +41,7 @@ RULES_B = {
     "Altre attività": ["acconto"]
 }
 
-# ───────────── GITHUB I/O ─────────────
+# === FUNZIONI UTILI ===
 def github_load_json():
     try:
         if not (GITHUB_REPO and GITHUB_FILE):
@@ -70,13 +71,13 @@ def github_save_json(data: dict):
     except Exception as e:
         st.error(f"❌ Salvataggio GitHub fallito: {e}")
 
-# ───────────── UTILS ─────────────
-def norm(s): return re.sub(r"\s+", " ", str(s).strip().lower())
-def any_kw_in(t, kws): return any(k in t for k in kws)
 @st.cache_data(show_spinner=False)
 def load_excel(f): return pd.read_excel(f)
 
-# ───────────── CLASSIFICAZIONE ─────────────
+def norm(s): return re.sub(r"\s+", " ", str(s).strip().lower())
+def any_kw_in(t, kws): return any(k in t for k in kws)
+
+# === CLASSIFICAZIONE ===
 def classify_A(desc, fam_val, mem):
     if pd.notna(fam_val) and str(fam_val).strip(): return str(fam_val).strip()
     d = norm(desc)
@@ -95,7 +96,7 @@ def classify_B(prest, cat_val, mem):
         if any_kw_in(d, keys): return cat
     return "Altre attività"
 
-# ───────────── MAIN ─────────────
+# === MAIN ===
 def main():
     st.title("📊 Studio ISA - DrVeto e VetsGo")
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
@@ -103,12 +104,10 @@ def main():
         st.info("Carica un file per iniziare.")
         return
 
-    # Inizializza sessione
     if "df" not in st.session_state or up.name != st.session_state.get("last_file"):
         st.session_state.df = load_excel(up)
         st.session_state.user_memory = github_load_json()
         st.session_state.local_updates = {}
-        st.session_state.pending_terms = []
         st.session_state.idx = 0
         st.session_state.last_file = up.name
 
@@ -117,72 +116,110 @@ def main():
     updates = st.session_state.local_updates
 
     # Rileva tipo file
-    ftype = "A" if "descrizione" in " ".join(df.columns).lower() else "B"
-    st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype=='A' else 'B – Gestionale'}")
+    cols = [c.lower().strip() for c in df.columns]
+    if any("prestazione" in c for c in cols) and any("totaleimpon" in c for c in cols):
+        ftype = "B"
+    else:
+        ftype = "A"
+    st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype=='A' else 'B – Gestionale nuovo'}")
 
-    # CLASSIFICA
+    # === TIPO A ===
     if ftype == "A":
         col_desc = next(c for c in df.columns if "descrizione" in c.lower())
         col_fam = next(c for c in df.columns if "famiglia" in c.lower())
-        col_netto = next(c for c in df.columns if "netto" in c.lower())
+        col_netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
         col_perc = next(c for c in df.columns if c.strip() == "%")
         df["FamigliaCategoria"] = df.apply(lambda r: classify_A(r[col_desc], r[col_fam], mem|updates), axis=1)
         base_col, cat_col = col_desc, "FamigliaCategoria"
+    # === TIPO B ===
     else:
-        col_prest = next(c for c in df.columns if "prestazione" in c.lower())
+        col_prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ", "").lower())
         col_cat = next(c for c in df.columns if "categoria" in c.lower())
-        col_imp = next(c for c in df.columns if "impon" in c.lower())
-        col_iva = next(c for c in df.columns if "coniva" in c.lower())
-        col_tot = next(c for c in df.columns if c.lower().startswith("totale"))
+        col_imp = next(c for c in df.columns if "totaleimpon" in c.lower())
+        col_iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
+        col_tot = [c for c in df.columns if c.lower().strip() == "totale"]
+        col_tot = col_tot[0] if col_tot else next(c for c in df.columns if "totale" in c.lower())
         df["Categoria"] = df.apply(lambda r: classify_B(r[col_prest], r[col_cat], mem|updates), axis=1)
         base_col, cat_col = col_prest, "Categoria"
 
-    # Trova nuovi termini
+    # === Nuovi termini ===
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
+    # === UI apprendimento ===
     if pending and st.session_state.idx < len(pending):
         term = pending[st.session_state.idx]
         st.warning(f"🧠 Nuovo termine: {term} ({st.session_state.idx+1}/{len(pending)})")
         opts = list(RULES_A.keys()) if ftype=="A" else list(RULES_B.keys())
         cat = st.selectbox("Categoria:", opts, key=f"sel_{term}")
-        if st.button("✅ Salva locale e prossimo"):
+        c1, c2 = st.columns([1,1])
+        if c1.button("✅ Salva locale e prossimo"):
             updates[term] = cat
             st.session_state.local_updates = updates
             st.session_state.idx += 1
             st.rerun()
+        if c2.button("💾 Salva tutto su GitHub"):
+            mem.update(updates)
+            github_save_json(mem)
+            st.session_state.user_memory = mem
+            st.session_state.local_updates = {}
+            st.session_state.idx = 0
+            st.success("✅ Dizionario aggiornato su GitHub!")
+            st.rerun()
         st.stop()
 
-    # Tutti classificati → report
-    st.success("✅ Tutti classificati. Genero report…")
+    # === Tutto classificato → report ===
+    st.success("✅ Tutti classificati. Genero Studio ISA…")
 
     if ftype == "A":
+        col_netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
         col_perc = next(c for c in df.columns if c.strip() == "%")
-        col_netto = next(c for c in df.columns if "netto" in c.lower())
         studio = df.groupby(cat_col, dropna=False).agg({col_perc:"sum", col_netto:"sum"}).reset_index()
         studio.columns = ["FamigliaCategoria","Qtà","Netto"]
         tot_q, tot_n = studio["Qtà"].sum(), studio["Netto"].sum()
         studio["% Qtà"] = (studio["Qtà"]/tot_q*100).round(2)
         studio["% Netto"] = (studio["Netto"]/tot_n*100).round(2)
+        studio = pd.concat([studio, pd.DataFrame([["Totale",tot_q,tot_n,100,100]], columns=studio.columns)], ignore_index=True)
+
+        st.dataframe(studio)
+        fig, ax = plt.subplots(figsize=(8,5))
+        ax.bar(studio["FamigliaCategoria"], studio["Netto"], color="skyblue")
+        ax.set_title("Somma Netto per FamigliaCategoria")
     else:
-        col_imp = next(c for c in df.columns if "impon" in c.lower())
-        col_iva = next(c for c in df.columns if "coniva" in c.lower())
-        col_tot = next(c for c in df.columns if c.lower().startswith("totale"))
+        col_imp = next(c for c in df.columns if "totaleimpon" in c.lower())
+        col_iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
+        col_tot = [c for c in df.columns if c.lower().strip() == "totale"]
+        col_tot = col_tot[0] if col_tot else next(c for c in df.columns if "totale" in c.lower())
         studio = df.groupby(cat_col, dropna=False).agg({col_imp:"sum", col_iva:"sum", col_tot:"sum"}).reset_index()
         studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA","Totale"]
         tot_t = studio["Totale"].sum()
         studio["% Totale"] = (studio["Totale"]/tot_t*100).round(2)
+        studio = pd.concat([studio, pd.DataFrame([["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), tot_t, 100]], columns=studio.columns)], ignore_index=True)
 
-    st.dataframe(studio)
+        st.dataframe(studio)
+        fig, ax = plt.subplots(figsize=(8,5))
+        ax.bar(studio["Categoria"], studio["Totale"], color="skyblue")
+        ax.set_title("Somma Totale per Categoria")
 
-    # Salva su GitHub (tutti insieme)
-    if st.button("💾 Salva TUTTI su GitHub"):
-        mem.update(updates)
-        github_save_json(mem)
-        st.session_state.user_memory = mem
-        st.session_state.local_updates = {}
-        st.session_state.idx = 0
-        st.success("✅ Dizionario aggiornato su GitHub!")
+    plt.xticks(rotation=45, ha="right")
+    buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
+    st.image(buf)
+
+    # === Download Excel ===
+    wb = Workbook(); ws = wb.active; ws.title = "Report"
+    start_row, start_col = 3, 2
+    total_fill = PatternFill(start_color="FFF4B084", end_color="FFF4B084", fill_type="solid")
+    for j,h in enumerate(studio.columns,start=start_col):
+        ws.cell(row=start_row,column=j,value=h).font = Font(bold=True)
+    for i,row in enumerate(dataframe_to_rows(studio,index=False,header=False),start=start_row+1):
+        for j,v in enumerate(row,start=start_col):
+            ws.cell(row=i,column=j,value=v)
+    tot_row_idx = start_row+len(studio)
+    for j in range(start_col, start_col+len(studio.columns)):
+        c=ws.cell(row=tot_row_idx,column=j); c.font=Font(bold=True); c.fill=total_fill
+    img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
+    out=BytesIO(); wb.save(out)
+    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{ftype}_{datetime.now().year}.xlsx")
 
 if __name__ == "__main__":
     main()
