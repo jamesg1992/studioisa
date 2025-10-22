@@ -140,25 +140,24 @@ def main():
         df["Categoria"] = [classify_B(p, c, mem|updates) for p,c in zip(df[col_prest], df[col_cat])]
         base_col, cat_col = col_prest, "Categoria"
 
-    # Termini da classificare
+    # === TERMINI E APPRENDIMENTO ===
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
-   # === SEZIONE STATO APPRENDIMENTO ===
-with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
-    total_terms = len(all_terms)
-    known_terms = total_terms - len(pending)
-    st.write(f"**Totale termini analizzati:** {total_terms}")
-    st.write(f"**✅ Già conosciuti:** {known_terms}")
-    st.write(f"**🧠 Da imparare:** {len(pending)}")
-
-    if pending:
-        st.caption("🆕 Termini nuovi trovati (massimo 30 visualizzati):")
-        st.code(", ".join(pending[:30]), language="text")
-    if known_terms > 0:
-        known_list = [t for t in all_terms if any(norm(k) in norm(t) for k in (mem|updates).keys())]
-        st.caption("📖 Termini già indicizzati (massimo 30 visualizzati):")
-        st.code(", ".join(known_list[:30]), language="text")
+# 📚 SEZIONE STATO APPRENDIMENTO
+    with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
+        total_terms = len(all_terms)
+        known_terms = total_terms - len(pending)
+        st.write(f"**Totale termini analizzati:** {total_terms}")
+        st.write(f"**✅ Già conosciuti:** {known_terms}")
+        st.write(f"**🧠 Da imparare:** {len(pending)}")
+        if pending:
+            st.caption("🆕 Termini nuovi trovati (max 30):")
+            st.code(", ".join(pending[:30]), language="text")
+        if known_terms > 0:
+            known_list = [t for t in all_terms if any(norm(k) in norm(t) for k in (mem|updates).keys())]
+            st.caption("📖 Termini già indicizzati (max 30):")
+            st.code(", ".join(known_list[:30]), language="text")
     
     # === APPRENDIMENTO ===
     if pending and st.session_state.idx < len(pending):
@@ -248,5 +247,6 @@ with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
 
 if __name__ == "__main__":
     main()
+
 
 
