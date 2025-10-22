@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import json, os, base64, requests, re, time
+import json, os, base64, requests, re
 from io import BytesIO
 from datetime import datetime
 from openpyxl import Workbook
@@ -41,8 +41,7 @@ RULES_B = {
     "Altre attività": ["acconto"]
 }
 
-# === FUNZIONI GITHUB ===
-@st.cache_resource(show_spinner=False)
+# === FUNZIONI UTILI ===
 def github_load_json():
     try:
         if not (GITHUB_REPO and GITHUB_FILE):
@@ -59,7 +58,7 @@ def github_load_json():
 def github_save_json(data: dict):
     try:
         if not (GITHUB_REPO and GITHUB_FILE and GITHUB_TOKEN):
-            st.info("ℹ️ Cloud non configurato.")
+            st.info("ℹ️ GitHub non configurato.")
             return
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
@@ -70,50 +69,53 @@ def github_save_json(data: dict):
         if sha: payload["sha"] = sha
         requests.put(url, headers=headers, data=json.dumps(payload))
     except Exception as e:
-        st.error(f"❌ Salvataggio sul cloud fallito: {e}")
+        st.error(f"❌ Salvataggio GitHub fallito: {e}")
 
-# === UTILITÀ ===
 @st.cache_data(show_spinner=False)
-def load_excel(f):
+def load_excel(f): 
     return pd.read_excel(f)
 
-def norm(s): return re.sub(r"\s+", " ", str(s).strip().lower())
-def any_kw_in(t, kws): return any(k in t for k in kws)
+def norm(s): 
+    return re.sub(r"\s+", " ", str(s).strip().lower())
+
+def any_kw_in(t, kws): 
+    return any(k in t for k in kws)
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam_val, mem):
-    if pd.notna(fam_val) and str(fam_val).strip(): return str(fam_val).strip()
+    if pd.notna(fam_val) and str(fam_val).strip():
+        return str(fam_val).strip()
     d = norm(desc)
     for k,v in mem.items():
-        if norm(k) in d: return v
+        if norm(k) in d:
+            return v
     for cat,keys in RULES_A.items():
-        if any_kw_in(d, keys): return cat
+        if any_kw_in(d, keys):
+            return cat
     return "ALTRE PRESTAZIONI"
 
 def classify_B(prest, cat_val, mem):
-    if pd.notna(cat_val) and str(cat_val).strip(): return str(cat_val).strip()
+    if pd.notna(cat_val) and str(cat_val).strip():
+        return str(cat_val).strip()
     d = norm(prest)
     for k,v in mem.items():
-        if norm(k) in d: return v
+        if norm(k) in d:
+            return v
     for cat,keys in RULES_B.items():
-        if any_kw_in(d, keys): return cat
+        if any_kw_in(d, keys):
+            return cat
     return "Altre attività"
 
 # === MAIN ===
 def main():
     st.title("📊 Studio ISA - DrVeto e VetsGo")
-
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not up:
         st.info("Carica un file per iniziare.")
         return
 
-    start = time.time()
-
-    # Cache dati caricati
     if "df" not in st.session_state or up.name != st.session_state.get("last_file"):
-        with st.spinner("🔍 Lettura file..."):
-            st.session_state.df = load_excel(up)
+        st.session_state.df = load_excel(up)
         st.session_state.user_memory = github_load_json()
         st.session_state.local_updates = {}
         st.session_state.idx = 0
@@ -123,116 +125,82 @@ def main():
     mem = st.session_state.user_memory
     updates = st.session_state.local_updates
 
-    # Tipo file
+    # Rileva tipo file
     cols = [c.lower().strip() for c in df.columns]
-    ftype = "B" if any("prestazione" in c for c in cols) and any("totaleimpon" in c for c in cols) else "A"
+    if any("prestazione" in c for c in cols) and any("totaleimpon" in c for c in cols):
+        ftype = "B"
+    else:
+        ftype = "A"
     st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype=='A' else 'B – VetsGo'}")
 
-    # Classificazione batch (velocizzata)
+    # === TIPO A ===
     if ftype == "A":
         col_desc = next(c for c in df.columns if "descrizione" in c.lower())
         col_fam = next(c for c in df.columns if "famiglia" in c.lower())
-        df["FamigliaCategoria"] = [classify_A(d, f, mem|updates) for d,f in zip(df[col_desc], df[col_fam])]
+        col_netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
+        col_perc = next(c for c in df.columns if c.strip() == "%")
+        df["FamigliaCategoria"] = df.apply(lambda r: classify_A(r[col_desc], r[col_fam], mem|updates), axis=1)
         base_col, cat_col = col_desc, "FamigliaCategoria"
+    # === TIPO B ===
     else:
         col_prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ", "").lower())
         col_cat = next(c for c in df.columns if "categoria" in c.lower())
-        df["Categoria"] = [classify_B(p, c, mem|updates) for p,c in zip(df[col_prest], df[col_cat])]
+        df["Categoria"] = df.apply(lambda r: classify_B(r[col_prest], r[col_cat], mem|updates), axis=1)
         base_col, cat_col = col_prest, "Categoria"
 
-    # === TERMINI E APPRENDIMENTO ===
+    # === Nuovi termini ===
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
-# 📚 SEZIONE STATO APPRENDIMENTO
-    with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
-        total_terms = len(all_terms)
-        known_terms = total_terms - len(pending)
-        st.write(f"**Totale termini analizzati:** {total_terms}")
-        st.write(f"**✅ Già conosciuti:** {known_terms}")
-        st.write(f"**🧠 Da imparare:** {len(pending)}")
-        if pending:
-            st.caption("🆕 Termini nuovi trovati (max 30):")
-            st.code(", ".join(pending[:30]), language="text")
-        if known_terms > 0:
-            known_list = [t for t in all_terms if any(norm(k) in norm(t) for k in (mem|updates).keys())]
-            st.caption("📖 Termini già indicizzati (max 30):")
-            st.code(", ".join(known_list[:30]), language="text")
-    
     # === APPRENDIMENTO ===
-if pending and st.session_state.idx < len(pending):
-    term = pending[st.session_state.idx]
-    progress = (st.session_state.idx + 1) / len(pending)
-    st.progress(progress)
-    st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx + 1}/{len(pending)})")
+    if pending and st.session_state.idx < len(pending):
+        term = pending[st.session_state.idx]
+        progress = (st.session_state.idx + 1) / len(pending)
+        st.progress(progress)
+        st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx + 1}/{len(pending)})")
 
-    opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
-    default_cat = updates.get(term, opts[0])
+        opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
+        default_cat = updates.get(term, opts[0])
 
-    # --- FORM ottimizzato (nessun refresh al cambio tendina)
-    with st.form(key=f"form_{term}"):
-        cat = st.selectbox(
-            "📂 Seleziona categoria:",
-            opts,
-            index=opts.index(default_cat) if default_cat in opts else 0
-        )
+        with st.form(key=f"form_{term}"):
+            cat = st.selectbox(
+                "📂 Seleziona categoria:",
+                opts,
+                index=opts.index(default_cat) if default_cat in opts else 0
+            )
 
-        c1, c2, c3 = st.columns([1, 1, 2])
-        with c1:
-            save_next = st.form_submit_button("✅ Salva locale e prossimo")
-        with c2:
-            skip = st.form_submit_button("⏭️ Salta")
-        with c3:
-            save_cloud = st.form_submit_button("💾 Salva tutto su Cloud")
+            c1, c2, c3 = st.columns([1, 1, 2])
+            with c1:
+                save_next = st.form_submit_button("✅ Salva locale e prossimo")
+            with c2:
+                skip = st.form_submit_button("⏭️ Salta")
+            with c3:
+                save_cloud = st.form_submit_button("💾 Salva tutto su Cloud")
 
-    # --- Gestione eventi senza refresh automatico
-    if save_next:
-        updates[term] = cat
-        st.session_state.local_updates = updates
-        st.session_state.idx += 1
-        st.toast(f"✅ Salvato '{term}' come {cat}", icon="💾")
-        st.rerun()
+        if save_next:
+            updates[term] = cat
+            st.session_state.local_updates = updates
+            st.session_state.idx += 1
+            st.toast(f"✅ Salvato '{term}' come {cat}", icon="💾")
+            st.rerun()
 
-    elif skip:
-        st.session_state.idx += 1
-        st.toast("⏭️ Termine saltato", icon="➡️")
-        st.rerun()
+        elif skip:
+            st.session_state.idx += 1
+            st.toast("⏭️ Termine saltato", icon="➡️")
+            st.rerun()
 
-    elif save_cloud:
-        mem.update(updates)
-        github_save_json(mem)
-        st.session_state.user_memory = mem
-        st.session_state.local_updates = {}
-        st.session_state.idx = 0
-        st.success("✅ Dizionario aggiornato su GitHub!")
-        st.rerun()
+        elif save_cloud:
+            mem.update(updates)
+            github_save_json(mem)
+            st.session_state.user_memory = mem
+            st.session_state.local_updates = {}
+            st.session_state.idx = 0
+            st.success("✅ Dizionario aggiornato su GitHub!")
+            st.rerun()
 
-    st.stop()
-    # --- Gestione eventi senza refresh automatico
-    if save_next:
-        updates[term] = cat
-        st.session_state.local_updates = updates
-        st.session_state.idx += 1
-        st.toast(f"✅ Salvato '{term}' come {cat}", icon="💾")
-        st.rerun()
+        st.stop()
 
-    elif skip:
-        st.session_state.idx += 1
-        st.toast("⏭️ Terminato saltato", icon="➡️")
-        st.rerun()
-
-    elif save_cloud:
-        mem.update(updates)
-        github_save_json(mem)
-        st.session_state.user_memory = mem
-        st.session_state.local_updates = {}
-        st.session_state.idx = 0
-        st.success("✅ Dizionario aggiornato su GitHub!")
-        st.rerun()
-
-    st.stop()
-
-    # === REPORT ===
+    # === Tutto classificato → report ===
     st.success("✅ Tutti classificati. Genero Studio ISA…")
 
     if ftype == "A":
@@ -245,9 +213,11 @@ if pending and st.session_state.idx < len(pending):
         studio["% Netto"] = (studio["Netto"]/tot_n*100).round(2)
         studio = pd.concat([studio, pd.DataFrame([["Totale",tot_q,tot_n,100,100]], columns=studio.columns)], ignore_index=True)
 
+        st.dataframe(studio)
         fig, ax = plt.subplots(figsize=(8,5))
         ax.bar(studio["FamigliaCategoria"], studio["Netto"], color="skyblue")
         ax.set_title("Somma Netto per FamigliaCategoria")
+
     else:
         col_imp = next(c for c in df.columns if "totaleimpon" in c.lower())
         col_iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
@@ -259,6 +229,7 @@ if pending and st.session_state.idx < len(pending):
         studio["% Totale"] = (studio["Totale"]/tot_t*100).round(2)
         studio = pd.concat([studio, pd.DataFrame([["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), tot_t, 100]], columns=studio.columns)], ignore_index=True)
 
+        st.dataframe(studio)
         fig, ax = plt.subplots(figsize=(8,5))
         ax.bar(studio["Categoria"], studio["Totale"], color="skyblue")
         ax.set_title("Somma Totale per Categoria")
@@ -267,7 +238,7 @@ if pending and st.session_state.idx < len(pending):
     buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
     st.image(buf)
 
-    # === DOWNLOAD ===
+    # === Download Excel ===
     wb = Workbook(); ws = wb.active; ws.title = "Report"
     start_row, start_col = 3, 2
     total_fill = PatternFill(start_color="FFF4B084", end_color="FFF4B084", fill_type="solid")
@@ -283,14 +254,5 @@ if pending and st.session_state.idx < len(pending):
     out=BytesIO(); wb.save(out)
     st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{ftype}_{datetime.now().year}.xlsx")
 
-    st.caption(f"⏱️ Elaborazione completata in {round(time.time()-start,2)} secondi")
-
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
