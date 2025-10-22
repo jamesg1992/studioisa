@@ -39,13 +39,9 @@ def github_save_json(data: dict):
         if sha:
             payload["sha"] = sha
 
-        put_res = requests.put(url, headers=headers, data=json.dumps(payload))
-        if put_res.status_code in (200, 201):
-            st.success("✅ Dizionario aggiornato su GitHub!")
-        else:
-            st.error(f"❌ Errore GitHub: {put_res.status_code}")
-    except Exception as e:
-        st.error(f"❌ Salvataggio GitHub fallito: {e}")
+        requests.put(url, headers=headers, data=json.dumps(payload))
+    except Exception:
+        pass
 
 # === CACHE LETTURA EXCEL ===
 @st.cache_data(show_spinner=False)
@@ -81,14 +77,14 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Dr.Veto e VetsGo")
+    st.title("📊 Studio ISA – Training Incrementale")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
         st.info("Carica un file per iniziare.")
         return
 
-    # INIT
+    # === INIT
     if "df" not in st.session_state:
         st.session_state.df = load_excel(uploaded)
         st.session_state.user_memory = github_load_json()
@@ -100,7 +96,7 @@ def main():
     user_memory = st.session_state.user_memory
     local_updates = st.session_state.local_updates
 
-    # === Rileva colonne ===
+    # === Rileva colonne principali
     col_desc = next((c for c in df.columns if "descrizione" in c.lower()), None)
     col_fam  = next((c for c in df.columns if "famiglia" in c.lower()), None)
     col_netto= next((c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower()), None)
@@ -109,56 +105,53 @@ def main():
         st.error("❌ Colonne richieste non trovate.")
         return
 
-    # === Classifica righe ===
+    # === Classifica righe
     df["FamigliaCategoria"] = df.apply(lambda r: classify(r[col_desc], r[col_fam], user_memory), axis=1)
 
-    # === Trova nuovi termini non classificati ===
-    if not st.session_state.pending_terms:
-        uniq = sorted({str(v).strip() for v in df[col_desc].dropna().unique()}, key=lambda s: s.casefold())
-        for term in uniq:
-            t = term.lower()
-            if not any(k.lower() in t for k in user_memory.keys()) and not any(k in t for keys in _RULES.values() for k in keys):
-                st.session_state.pending_terms.append(term)
+    # === Rileva nuovi termini non noti
+    uniq = sorted({str(v).strip() for v in df[col_desc].dropna().unique()}, key=lambda s: s.casefold())
+    new_terms = []
+    for term in uniq:
+        t = term.lower()
+        if not any(k.lower() in t for k in user_memory.keys()) and not any(k in t for keys in _RULES.values() for k in keys):
+            new_terms.append(term)
+
+    if new_terms:
+        st.session_state.pending_terms = new_terms
+        st.session_state.idx = 0
 
     pending = st.session_state.pending_terms
     idx = st.session_state.idx
 
-    # === Fase di apprendimento ===
+    # === Apprendimento incrementale
     if pending:
-        if idx >= len(pending):  # <-- FIX IndexError
-            st.session_state.idx = 0
-            idx = 0
+        if idx >= len(pending):
+            st.session_state.pending_terms = []
+            st.success("🎉 Tutti i nuovi termini sono stati classificati.")
+            st.rerun()
+            return
 
         term = pending[idx]
-        st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
-        cat = st.selectbox(f"Categoria per “{term}”:", list(_RULES.keys()), key=f"cat_{idx}")
+        st.warning(f"🧠 Nuovo termine da apprendere: {term} ({idx+1}/{len(pending)})")
+        cat = st.selectbox("Scegli la categoria:", list(_RULES.keys()), key=f"cat_{idx}")
 
-        c1, c2, c3 = st.columns([1,1,2])
+        c1, c2 = st.columns([1,1])
         with c1:
-            if st.button("✅ Salva locale", key=f"save_{idx}"):
+            if st.button("✅ Salva"):
                 local_updates[term] = cat
-                st.session_state.local_updates = local_updates
+                user_memory[term] = cat
+                github_save_json(user_memory)
                 st.session_state.idx += 1
                 st.rerun()
 
         with c2:
-            if st.button("⏭️ Avanti"):
+            if st.button("⏭️ Salta"):
                 st.session_state.idx += 1
-                st.rerun()
-
-        with c3:
-            if st.button("💾 Salva tutto su GitHub", type="primary"):
-                user_memory.update(local_updates)
-                github_save_json(user_memory)
-                st.session_state.user_memory = user_memory
-                st.session_state.local_updates = {}
-                st.session_state.pending_terms = []
-                st.success("✅ Tutti i nuovi termini salvati su GitHub!")
                 st.rerun()
         return
 
-    # === Tutti classificati → Report finale ===
-    st.success("✅ Tutti i termini classificati. Genero report…")
+    # === Report finale
+    st.success("✅ Tutto classificato. Genero il report aggiornato…")
 
     studio_isa = (
         df.groupby("FamigliaCategoria", dropna=False)
@@ -167,15 +160,13 @@ def main():
         .rename(columns={col_perc: "Qtà", col_netto: "Netto"})
     )
     studio_isa = studio_isa[~studio_isa["FamigliaCategoria"].str.lower().isin(["privato", "none"])]
-    
-    # Calcoli percentuali
+
     tot_qta = studio_isa["Qtà"].sum()
     tot_netto = studio_isa["Netto"].sum()
     studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
     studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
     studio_isa = pd.concat([studio_isa, pd.DataFrame([["Totale",tot_qta,tot_netto,100,100]], columns=studio_isa.columns)], ignore_index=True)
 
-    # === Tabella visiva ===
     st.dataframe(
         studio_isa.style
         .apply(lambda r: ['background-color: #fff8b3' if r["FamigliaCategoria"] == "Totale" else '' for _ in r], axis=1)
@@ -183,14 +174,12 @@ def main():
         .format({"Qtà": "{:,.0f}", "Netto": "{:,.2f}", "% Qtà": "{:.2f}", "% Netto": "{:.2f}"})
     )
 
-    # === Grafico ===
     fig, ax = plt.subplots(figsize=(8,5))
     ax.bar(studio_isa["FamigliaCategoria"], studio_isa["Netto"], color="skyblue")
     ax.set_title("Somma Netto per FamigliaCategoria")
     plt.xticks(rotation=45, ha="right")
     buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
 
-    # === Excel ===
     wb = Workbook()
     ws = wb.active; ws.title = "Report"
     start_row, start_col = 3, 2
@@ -212,5 +201,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
