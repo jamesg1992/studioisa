@@ -166,7 +166,8 @@ def main():
         .reset_index()
         .rename(columns={col_perc: "Qtà", col_netto: "Netto"})
     )
-
+    studio_isa = studio_isa[~studio_isa["FamigliaCategoria"].str.lower().isin(["privato", "none"])]
+    
     # Calcoli percentuali
     tot_qta = studio_isa["Qtà"].sum()
     tot_netto = studio_isa["Netto"].sum()
@@ -211,3 +212,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
