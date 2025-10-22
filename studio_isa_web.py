@@ -10,7 +10,7 @@ from openpyxl.styles import Font, PatternFill
 import matplotlib.pyplot as plt
 
 # === CONFIG ===
-st.set_page_config(page_title="Studio ISA", layout="wide")
+st.set_page_config(page_title="Studio ISA - Alcyon Italia", layout="wide")
 GITHUB_FILE = os.getenv("GITHUB_FILE", "keywords_memory.json")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -30,14 +30,14 @@ RULES_A = {
 
 # === REGOLE TIPO B ===
 RULES_B = {
-    "Domicilio": ["visite domiciliari","allevamenti","domicilio"],
-    "Terapia": ["visite ambulatoriali","terapia","trattamenti","vaccinazioni","ambulatorio","manualità","pet corner","visite","ricette","medicazione","microchip","controllo"],
-    "Radiologia": ["esami diagnostici per immagine","radiologia","eco","ecografia","tac","rx","raggi"],
-    "Laboratorio": ["altri esami diagnostici","esami biochimici","laboratorio","malattie infettive","emocromo","prelievo"],
-    "Chirurgia": ["interventi chirurgici","avulsione","endoscopia","eutanasia","sedazione","anestesia","chirurgia","odontostomat","orchiettomia","asportazione","biopsia","ovariectomia"],
-    "Ostetricia": ["assistenza al parto","ostetricia","parto"],
-    "Consulenza": ["attività di consulenza","perizia","collaborazione","telemedicina","consulto"],
-    "Inseminazione": ["inseminazione artificiale"],
+    "Visite domiciliari o presso allevamenti": ["visite domiciliari","allevamenti","domicilio"],
+    "Visite ambulatoriali": ["visite ambulatoriali","terapia","trattamenti","vaccinazioni","ambulatorio","manualità","pet corner","visite","ricette","medicazione","microchip","controllo"],
+    "Esami diagnostici per immagine": ["esami diagnostici per immagine","radiologia","eco","ecografia","tac","rx","raggi"],
+    "Altri esami diagnostici": ["altri esami diagnostici","esami biochimici","laboratorio","malattie infettive","emocromo","prelievo"],
+    "Interventi chirurgici": ["interventi chirurgici","avulsione","endoscopia","eutanasia","sedazione","anestesia","chirurgia","odontostomat","orchiettomia","asportazione","biopsia","ovariectomia"],
+    "Assistenza al parto/ostetricia": ["assistenza al parto","ostetricia","parto"],
+    "Attività di consulenza, perizia e collaborazione": ["attività di consulenza","perizia","collaborazione","telemedicina","consulto"],
+    "Prestazioni di inseminazione artificiale": ["inseminazione artificiale"],
     "Altre attività": ["acconto"]
 }
 
@@ -121,7 +121,7 @@ def main():
         ftype = "B"
     else:
         ftype = "A"
-    st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype=='A' else 'B – Gestionale nuovo'}")
+    st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype=='A' else 'B – VetsGo'}")
 
     # === TIPO A ===
     if ftype == "A":
@@ -158,13 +158,13 @@ def main():
             st.session_state.local_updates = updates
             st.session_state.idx += 1
             st.rerun()
-        if c2.button("💾 Salva tutto su GitHub"):
+        if c2.button("💾 Salva tutto su Cloud"):
             mem.update(updates)
             github_save_json(mem)
             st.session_state.user_memory = mem
             st.session_state.local_updates = {}
             st.session_state.idx = 0
-            st.success("✅ Dizionario aggiornato su GitHub!")
+            st.success("✅ Dizionario aggiornato!")
             st.rerun()
         st.stop()
 
@@ -223,3 +223,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
