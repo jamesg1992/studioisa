@@ -10,7 +10,7 @@ from openpyxl.styles import Font, PatternFill
 import matplotlib.pyplot as plt
 
 # ───────────────── CONFIG ─────────────────
-st.set_page_config(page_title="Studio ISA v7", layout="wide")
+st.set_page_config(page_title="Studio ISA - Alcyon Italia", layout="wide")
 GITHUB_FILE = os.getenv("GITHUB_FILE", "keywords_memory.json")
 GITHUB_REPO = os.getenv("GITHUB_REPO")  # es: "utente/repo"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # personal access token
@@ -380,4 +380,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
