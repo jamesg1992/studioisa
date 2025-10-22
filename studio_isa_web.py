@@ -160,16 +160,16 @@ def main():
             st.code(", ".join(known_list[:30]), language="text")
     
     # === APPRENDIMENTO ===
-    if pending and st.session_state.idx < len(pending):
+if pending and st.session_state.idx < len(pending):
     term = pending[st.session_state.idx]
     progress = (st.session_state.idx + 1) / len(pending)
     st.progress(progress)
-    st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx+1}/{len(pending)})")
+    st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx + 1}/{len(pending)})")
 
     opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
     default_cat = updates.get(term, opts[0])
 
-    # --- FORM ottimizzato (niente refresh al cambio tendina)
+    # --- FORM ottimizzato (nessun refresh al cambio tendina)
     with st.form(key=f"form_{term}"):
         cat = st.selectbox(
             "📂 Seleziona categoria:",
@@ -185,6 +185,29 @@ def main():
         with c3:
             save_cloud = st.form_submit_button("💾 Salva tutto su Cloud")
 
+    # --- Gestione eventi senza refresh automatico
+    if save_next:
+        updates[term] = cat
+        st.session_state.local_updates = updates
+        st.session_state.idx += 1
+        st.toast(f"✅ Salvato '{term}' come {cat}", icon="💾")
+        st.rerun()
+
+    elif skip:
+        st.session_state.idx += 1
+        st.toast("⏭️ Termine saltato", icon="➡️")
+        st.rerun()
+
+    elif save_cloud:
+        mem.update(updates)
+        github_save_json(mem)
+        st.session_state.user_memory = mem
+        st.session_state.local_updates = {}
+        st.session_state.idx = 0
+        st.success("✅ Dizionario aggiornato su GitHub!")
+        st.rerun()
+
+    st.stop()
     # --- Gestione eventi senza refresh automatico
     if save_next:
         updates[term] = cat
@@ -264,6 +287,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
