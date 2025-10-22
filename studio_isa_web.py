@@ -151,6 +151,8 @@ def main():
      # === UI apprendimento ===
     if pending and st.session_state.idx < len(pending):
         term = pending[st.session_state.idx]
+        progress = (st.session_state.idx + 1) / len(pending)
+        st.progress(progress)
         st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx+1}/{len(pending)})")
 
         opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
@@ -166,12 +168,12 @@ def main():
                 updates[term] = cat
                 st.session_state.local_updates = updates
                 st.session_state.idx += 1
-                st.experimental_rerun()  # refresh leggero per passare al termine dopo
+                st.rerun()  # ✅ refresh leggero e compatibile
 
         with c2:
             if st.button("⏭️ Salta", key=f"skip_{term}"):
                 st.session_state.idx += 1
-                st.experimental_rerun()
+                st.rerun()
 
         with c3:
             if st.button("💾 Salva tutto su Cloud", key="save_cloud"):
@@ -181,7 +183,7 @@ def main():
                 st.session_state.local_updates = {}
                 st.session_state.idx = 0
                 st.success("✅ Dizionario aggiornato su GitHub!")
-                st.experimental_rerun()
+                st.rerun()
 
         st.stop()
 
@@ -240,6 +242,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
