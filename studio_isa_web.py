@@ -93,7 +93,7 @@ def any_kw_in(text: str, kws: list[str]) -> bool:
     return any(norm(k) in t for k in kws)
 
 def detect_file_type(columns: list[str]) -> str:
-    """Ritorna 'A' (DrVeto) o 'B' (Gestionale) in base alle colonne presenti."""
+    """Ritorna 'A' (DrVeto) o 'B' (VetsGo) in base alle colonne presenti."""
     cols_low = [c.lower() for c in columns]
     # Tipo B se ha PrestazioneProdotto + Totali
     if any("prestazioneprodotto" in c.replace(" ", "") for c in cols_low) and \
@@ -155,7 +155,7 @@ def classify_B(prest: str, cat_val: str | None, memory: dict) -> str:
 
 # ──────────────── MAIN ────────────────
 def main():
-    st.title("📊 Studio ISA – v7 (multi-formato + apprendimento)")
+    st.title("📊 Studio ISA DrVeto - VetsGo")
 
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not up:
@@ -229,7 +229,7 @@ def main():
             st.stop()
 
         # Report (Tipo A): FamigliaCategoria / Qtà / Netto / % Qtà / % Netto
-        st.success("✅ Nessun nuovo termine. Genero il report (Tipo A)…")
+        st.success("✅ Nessun nuovo termine. Genero il report (DrVeto)…")
 
         studio_isa = (
             df.groupby("FamigliaCategoria", dropna=False)
@@ -246,7 +246,7 @@ def main():
         studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2) if tot_netto else 0
         studio_isa = pd.concat([studio_isa, pd.DataFrame([["Totale", tot_qta, tot_netto, 100, 100]], columns=studio_isa.columns)], ignore_index=True)
 
-        st.subheader("📄 Tabella Studio ISA (Tipo A)")
+        st.subheader("📄 Tabella Studio ISA (DrVeto)")
         st.dataframe(
             studio_isa.style
               .apply(lambda r: ['background-color: #fff8b3' if r["FamigliaCategoria"]=="Totale" else '' for _ in r], axis=1)
@@ -278,7 +278,7 @@ def main():
             c=ws.cell(row=tot_row_idx,column=j); c.font=Font(bold=True); c.fill=total_fill
         img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
         out=BytesIO(); wb.save(out)
-        st.download_button("⬇️ Scarica Excel (Tipo A)", data=out.getvalue(), file_name=f"StudioISA_TipoA_{datetime.now().year}.xlsx")
+        st.download_button("⬇️ Scarica Excel (DrVeto)", data=out.getvalue(), file_name=f"StudioISA_DrVeto_{datetime.now().year}.xlsx")
 
         st.stop()
 
@@ -328,7 +328,7 @@ def main():
             st.stop()
 
         # Report (Tipo B): Categoria / TotaleImponibile / TotaleConIVA / Totale / % Totale
-        st.success("✅ Nessun nuovo termine. Genero il report (Tipo B)…")
+        st.success("✅ Nessun nuovo termine. Genero il report (VetsGo)…")
 
         studio_b = (
             df.groupby("Categoria", dropna=False)
@@ -344,7 +344,7 @@ def main():
         studio_b["% Totale"] = (studio_b["Totale"]/tot_totale*100).round(2) if tot_totale else 0.0
         studio_b = pd.concat([studio_b, pd.DataFrame([["Totale", studio_b["TotaleImponibile"].sum(), studio_b["TotaleConIVA"].sum(), tot_totale, 100]], columns=studio_b.columns)], ignore_index=True)
 
-        st.subheader("📄 Tabella Studio ISA (Tipo B)")
+        st.subheader("📄 Tabella Studio ISA (VetsGo)")
         st.dataframe(
             studio_b.style
               .apply(lambda r: ['background-color: #fff8b3' if r["Categoria"]=="Totale" else '' for _ in r], axis=1)
@@ -376,7 +376,8 @@ def main():
             c=ws.cell(row=tot_row_idx,column=j); c.font=Font(bold=True); c.fill=total_fill
         img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
         out=BytesIO(); wb.save(out)
-        st.download_button("⬇️ Scarica Excel (Tipo B)", data=out.getvalue(), file_name=f"StudioISA_TipoB_{datetime.now().year}.xlsx")
+        st.download_button("⬇️ Scarica Excel (VetsGo)", data=out.getvalue(), file_name=f"StudioISA_VetsGo_{datetime.now().year}.xlsx")
 
 if __name__ == "__main__":
     main()
+
