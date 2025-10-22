@@ -54,15 +54,15 @@ def load_excel(file):
 
 # === CLASSIFICAZIONE ===
 _RULES = {
-    "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt"],
-    "VISITE": ["visita","controllo","consulto","dermatologico"],
-    "FAR": ["meloxidyl","konclav","enrox","profenacarp","apoquel","osurnia","cylanic","mometa","aristos","cytopoint","milbemax","stomorgyl","previcox"],
-    "CHIRURGIA": ["intervento","chirurg","castraz","sterilizz","ovariect","detartrasi","estraz"],
-    "DIAGNOSTICA PER IMMAGINI": ["rx","radiograf","eco","ecografia","tac"],
-    "MEDICINA": ["terapia","terapie","flebo","day hospital","trattamento","emedog","cerenia","endovena"],
-    "VACCINI": ["vacc","letifend","rabbia","trivalente","felv"],
+    "LABORATORIO": ["analisi", "emocromo", "test", "esame", "coprolog", "feci", "giardia", "leishmania", "citolog", "istolog", "urinocolt"],
+    "VISITE": ["visita", "controllo", "consulto", "dermatologico"],
+    "FAR": ["meloxidyl", "konclav", "enrox", "profenacarp", "apoquel", "osurnia", "cylanic", "mometa", "aristos", "cytopoint", "milbemax", "stomorgyl", "previcox"],
+    "CHIRURGIA": ["intervento", "chirurg", "castraz", "sterilizz", "ovariect", "detartrasi", "estraz"],
+    "DIAGNOSTICA PER IMMAGINI": ["rx", "radiograf", "eco", "ecografia", "tac"],
+    "MEDICINA": ["terapia", "terapie", "flebo", "day hospital", "trattamento", "emedog", "cerenia", "endovena"],
+    "VACCINI": ["vacc", "letifend", "rabbia", "trivalente", "felv"],
     "CHIP": ["microchip"],
-    "ALTRE PRESTAZIONI": ["trasporto","eutanasia","unghie","cremazion","otoematoma"]
+    "ALTRE PRESTAZIONI": ["trasporto", "eutanasia", "unghie", "cremazion", "otoematoma"]
 }
 
 def classify(desc, fam_val, memory: dict):
@@ -81,7 +81,7 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA - Alcyon Italia")
+    st.title("📊 Studio ISA – Web App (Fast v6)")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
@@ -92,7 +92,7 @@ def main():
     if "df" not in st.session_state:
         st.session_state.df = load_excel(uploaded)
         st.session_state.user_memory = github_load_json()
-        st.session_state.local_updates = {}  # nuove categorie non ancora salvate
+        st.session_state.local_updates = {}
         st.session_state.pending_terms = []
         st.session_state.idx = 0
 
@@ -100,6 +100,7 @@ def main():
     user_memory = st.session_state.user_memory
     local_updates = st.session_state.local_updates
 
+    # === Rileva colonne ===
     col_desc = next((c for c in df.columns if "descrizione" in c.lower()), None)
     col_fam  = next((c for c in df.columns if "famiglia" in c.lower()), None)
     col_netto= next((c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower()), None)
@@ -108,9 +109,10 @@ def main():
         st.error("❌ Colonne richieste non trovate.")
         return
 
+    # === Classifica righe ===
     df["FamigliaCategoria"] = df.apply(lambda r: classify(r[col_desc], r[col_fam], user_memory), axis=1)
 
-    # --- Nuovi termini ---
+    # === Trova nuovi termini non classificati ===
     if not st.session_state.pending_terms:
         uniq = sorted({str(v).strip() for v in df[col_desc].dropna().unique()}, key=lambda s: s.casefold())
         for term in uniq:
@@ -120,12 +122,13 @@ def main():
 
     pending = st.session_state.pending_terms
     idx = st.session_state.idx
-# Se l'indice è fuori range (es. dopo l'ultimo), resetta a 0
-    if idx >= len(pending):
-        st.session_state.idx = 0
-        idx = 0
-    
+
+    # === Fase di apprendimento ===
     if pending:
+        if idx >= len(pending):  # <-- FIX IndexError
+            st.session_state.idx = 0
+            idx = 0
+
         term = pending[idx]
         st.warning(f"🧠 Da classificare: {len(pending)} termini | Corrente: {idx+1}/{len(pending)}")
         cat = st.selectbox(f"Categoria per “{term}”:", list(_RULES.keys()), key=f"cat_{idx}")
@@ -136,15 +139,11 @@ def main():
                 local_updates[term] = cat
                 st.session_state.local_updates = local_updates
                 st.session_state.idx += 1
-                if st.session_state.idx >= len(pending):
-                    st.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
                 st.rerun()
 
         with c2:
-            if st.button("⏭️ Salta"):
+            if st.button("⏭️ Avanti"):
                 st.session_state.idx += 1
-                if st.session_state.idx >= len(pending):
-                    st.session_state.idx = 0
                 st.rerun()
 
         with c3:
@@ -158,7 +157,7 @@ def main():
                 st.rerun()
         return
 
-    # --- Calcolo report ---
+    # === Tutti classificati → Report finale ===
     st.success("✅ Tutti i termini classificati. Genero report…")
 
     studio_isa = (
@@ -167,20 +166,30 @@ def main():
         .reset_index()
         .rename(columns={col_perc: "Qtà", col_netto: "Netto"})
     )
+
+    # Calcoli percentuali
     tot_qta = studio_isa["Qtà"].sum()
     tot_netto = studio_isa["Netto"].sum()
     studio_isa["% Qtà"] = (studio_isa["Qtà"]/tot_qta*100).round(2)
     studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
     studio_isa = pd.concat([studio_isa, pd.DataFrame([["Totale",tot_qta,tot_netto,100,100]], columns=studio_isa.columns)], ignore_index=True)
 
-    # --- Grafico ---
+    # === Tabella visiva ===
+    st.dataframe(
+        studio_isa.style
+        .apply(lambda r: ['background-color: #fff8b3' if r["FamigliaCategoria"] == "Totale" else '' for _ in r], axis=1)
+        .set_properties(subset=["FamigliaCategoria"], **{"font-weight": "bold"})
+        .format({"Qtà": "{:,.0f}", "Netto": "{:,.2f}", "% Qtà": "{:.2f}", "% Netto": "{:.2f}"})
+    )
+
+    # === Grafico ===
     fig, ax = plt.subplots(figsize=(8,5))
     ax.bar(studio_isa["FamigliaCategoria"], studio_isa["Netto"], color="skyblue")
     ax.set_title("Somma Netto per FamigliaCategoria")
     plt.xticks(rotation=45, ha="right")
     buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
 
-    # --- Excel ---
+    # === Excel ===
     wb = Workbook()
     ws = wb.active; ws.title = "Report"
     start_row, start_col = 3, 2
@@ -198,9 +207,7 @@ def main():
         c.font=Font(bold=True); c.fill=total_fill
     img=XLImage(buf); img.anchor=f"A{tot_row_idx+3}"; ws.add_image(img)
     out=BytesIO(); wb.save(out)
-    st.download_button("⬇️ Scarica Studio ISA Excel", data=out.getvalue(), file_name="StudioISA_.xlsx")
+    st.download_button("⬇️ Scarica report Excel", data=out.getvalue(), file_name="StudioISA_Report.xlsx")
 
 if __name__ == "__main__":
     main()
-
-
