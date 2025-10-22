@@ -144,8 +144,8 @@ def main():
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
-    # === SEZIONE STATO APPRENDIMENTO ===
-    with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
+   # === SEZIONE STATO APPRENDIMENTO ===
+with st.expander("📚 Stato apprendimento Studio ISA", expanded=True):
     total_terms = len(all_terms)
     known_terms = total_terms - len(pending)
     st.write(f"**Totale termini analizzati:** {total_terms}")
@@ -248,4 +248,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
