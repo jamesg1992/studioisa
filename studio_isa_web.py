@@ -148,38 +148,41 @@ def main():
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
     st.info(f"📊 Totale termini: {len(all_terms)} | 🧠 Già noti: {len(known)} | ✍️ Da apprendere: {len(pending)}")
 
-    # === UI apprendimento ===
-        # === UI apprendimento ===
+     # === UI apprendimento ===
     if pending and st.session_state.idx < len(pending):
-        term_container = st.empty()  # contenitore dinamico per aggiornare senza rerun
+        term = pending[st.session_state.idx]
+        st.subheader(f"🧠 Nuovo termine: `{term}` ({st.session_state.idx+1}/{len(pending)})")
 
-        def show_term(idx):
-            term = pending[idx]
-            term_container.markdown(f"### 🧠 Nuovo termine: `{term}` ({idx+1}/{len(pending)})")
+        opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
 
-            opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
-            cat = term_container.selectbox("Categoria:", opts, key=f"sel_{term}")
+        # Mantiene selezione persistente per ogni termine
+        default_cat = updates.get(term, opts[0])
+        cat = st.selectbox("📂 Seleziona categoria:", opts, key=f"cat_{term}", index=opts.index(default_cat) if default_cat in opts else 0)
 
-            c1, c2 = term_container.columns([1, 1])
-            with c1:
-                if st.button("✅ Salva locale e prossimo", key=f"save_{idx}"):
-                    updates[term] = cat
-                    st.session_state.local_updates = updates
-                    if st.session_state.idx < len(pending) - 1:
-                        st.session_state.idx += 1
-                        show_term(st.session_state.idx)  # aggiorna senza refresh
-                    else:
-                        term_container.success("🎉 Tutti classificati! Ora puoi salvare su GitHub.")
-            with c2:
-                if st.button("💾 Salva tutto su Cloud", key=f"cloud_{idx}"):
-                    mem.update(updates)
-                    github_save_json(mem)
-                    st.session_state.user_memory = mem
-                    st.session_state.local_updates = {}
-                    st.session_state.idx = 0
-                    term_container.success("✅ Dizionario aggiornato su GitHub!")
+        c1, c2, c3 = st.columns([1, 1, 2])
 
-        show_term(st.session_state.idx)
+        with c1:
+            if st.button("✅ Salva locale e prossimo", key=f"save_{term}"):
+                updates[term] = cat
+                st.session_state.local_updates = updates
+                st.session_state.idx += 1
+                st.experimental_rerun()  # refresh leggero per passare al termine dopo
+
+        with c2:
+            if st.button("⏭️ Salta", key=f"skip_{term}"):
+                st.session_state.idx += 1
+                st.experimental_rerun()
+
+        with c3:
+            if st.button("💾 Salva tutto su Cloud", key="save_cloud"):
+                mem.update(updates)
+                github_save_json(mem)
+                st.session_state.user_memory = mem
+                st.session_state.local_updates = {}
+                st.session_state.idx = 0
+                st.success("✅ Dizionario aggiornato su GitHub!")
+                st.experimental_rerun()
+
         st.stop()
 
     # === Tutto classificato → report ===
@@ -237,5 +240,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
