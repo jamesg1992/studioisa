@@ -142,9 +142,11 @@ def main():
         df["Categoria"] = df.apply(lambda r: classify_B(r[col_prest], r[col_cat], mem|updates), axis=1)
         base_col, cat_col = col_prest, "Categoria"
 
-    # === Nuovi termini ===
+    # === STATISTICA APPRENDIMENTO ===
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
+    known = [t for t in all_terms if any(norm(k) in norm(t) for k in (mem|updates).keys())]
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
+    st.info(f"📊 Totale termini: {len(all_terms)} | 🧠 Già noti: {len(known)} | ✍️ Da apprendere: {len(pending)}")
 
     # === UI apprendimento ===
     if pending and st.session_state.idx < len(pending):
@@ -223,4 +225,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
