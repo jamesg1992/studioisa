@@ -77,7 +77,7 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Training Incrementale (Smart Reload)")
+    st.title("📊 Studio ISA - DrVeto e VetsGo")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
@@ -160,7 +160,7 @@ def main():
         return
 
     # === Tutti classificati → Report finale
-    st.success("✅ Tutto classificato. Genero il report aggiornato…")
+    st.success("✅ Tutto classificato. Genero lo Studio ISA aggiornato…")
 
     studio_isa = (
         df.groupby("FamigliaCategoria", dropna=False)
@@ -214,3 +214,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
