@@ -151,7 +151,9 @@ def main():
     # === UI apprendimento ===
     if pending and st.session_state.idx < len(pending):
         term = pending[st.session_state.idx]
-        st.warning(f"🧠 Nuovo termine: {term} ({st.session_state.idx+1}/{len(pending)})")
+        progress = (st.session_state.idx + 1) / len(pending)
+        st.progress(progress, text=f"Apprendimento: {st.session_state.idx + 1} di {len(pending)}")
+        st.warning(f"🧠 Nuovo termine: {term}")
         opts = list(RULES_A.keys()) if ftype=="A" else list(RULES_B.keys())
         cat = st.selectbox("Categoria:", opts, key=f"sel_{term}")
         c1, c2 = st.columns([1,1])
