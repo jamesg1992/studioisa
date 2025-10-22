@@ -85,16 +85,19 @@ def main():
         return
 
     # === INIT
-    if "df" not in st.session_state:
-        st.session_state.df = load_excel(uploaded)
-        st.session_state.user_memory = github_load_json()
-        st.session_state.local_updates = {}
-        st.session_state.pending_terms = []
-        st.session_state.idx = 0
+    # Forza sempre la rilettura del dizionario più recente da GitHub
+latest_memory = github_load_json()
 
-    df = st.session_state.df
-    user_memory = st.session_state.user_memory
-    local_updates = st.session_state.local_updates
+if "df" not in st.session_state or uploaded.name != st.session_state.get("last_file"):
+    st.session_state.df = load_excel(uploaded)
+    st.session_state.user_memory = latest_memory
+    st.session_state.local_updates = {}
+    st.session_state.pending_terms = []
+    st.session_state.idx = 0
+    st.session_state.last_file = uploaded.name
+else:
+    # Se il file è lo stesso, aggiorna comunque il dizionario per sicurezza
+    st.session_state.user_memory = latest_memory
 
     # === Rileva colonne principali
     col_desc = next((c for c in df.columns if "descrizione" in c.lower()), None)
@@ -201,3 +204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
