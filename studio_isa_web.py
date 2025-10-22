@@ -101,7 +101,7 @@ def classify_B(prest, cat_val, mem):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA - DrVeto e VetsGo (Fast v7)")
+    st.title("📊 Studio ISA - DrVeto e VetsGo")
 
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not up:
@@ -247,6 +247,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
