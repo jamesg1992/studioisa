@@ -77,45 +77,50 @@ def classify(desc, fam_val, memory: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA – Training Incrementale")
+    st.title("📊 Studio ISA – Training Incrementale (Smart Reload)")
 
     uploaded = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not uploaded:
         st.info("Carica un file per iniziare.")
         return
 
-    # === INIT
-    # Forza sempre la rilettura del dizionario più recente da GitHub
-latest_memory = github_load_json()
+    # === Ricarica sempre il dizionario più recente ===
+    latest_memory = github_load_json()
 
-if "df" not in st.session_state or uploaded.name != st.session_state.get("last_file"):
-    st.session_state.df = load_excel(uploaded)
-    st.session_state.user_memory = latest_memory
-    st.session_state.local_updates = {}
-    st.session_state.pending_terms = []
-    st.session_state.idx = 0
-    st.session_state.last_file = uploaded.name
-else:
-    # Se il file è lo stesso, aggiorna comunque il dizionario per sicurezza
-    st.session_state.user_memory = latest_memory
+    # === Inizializzazione sessione ===
+    if "df" not in st.session_state or uploaded.name != st.session_state.get("last_file"):
+        st.session_state.df = load_excel(uploaded)
+        st.session_state.user_memory = latest_memory
+        st.session_state.local_updates = {}
+        st.session_state.pending_terms = []
+        st.session_state.idx = 0
+        st.session_state.last_file = uploaded.name
+    else:
+        # Aggiorna sempre il dizionario con l'ultima versione
+        st.session_state.user_memory = latest_memory
 
-    # === Rileva colonne principali
+    df = st.session_state.df
+    user_memory = st.session_state.user_memory
+    local_updates = st.session_state.local_updates
+
+    # === Individua le colonne chiave ===
     col_desc = next((c for c in df.columns if "descrizione" in c.lower()), None)
     col_fam  = next((c for c in df.columns if "famiglia" in c.lower()), None)
     col_netto= next((c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower()), None)
     col_perc = next((c for c in df.columns if c.strip() == "%"), None)
     if not all([col_desc, col_fam, col_netto, col_perc]):
-        st.error("❌ Colonne richieste non trovate.")
+        st.error("❌ Colonne richieste non trovate nel file Excel.")
         return
 
-    # === Classifica righe
+    # === Classifica automaticamente
     df["FamigliaCategoria"] = df.apply(lambda r: classify(r[col_desc], r[col_fam], user_memory), axis=1)
 
-    # === Rileva nuovi termini non noti
+    # === Trova nuovi termini (anche se alcuni rimossi dal JSON)
     uniq = sorted({str(v).strip() for v in df[col_desc].dropna().unique()}, key=lambda s: s.casefold())
     new_terms = []
     for term in uniq:
         t = term.lower()
+        # controlla che non sia già nel dizionario o tra le regole
         if not any(k.lower() in t for k in user_memory.keys()) and not any(k in t for keys in _RULES.values() for k in keys):
             new_terms.append(term)
 
@@ -135,7 +140,7 @@ else:
             return
 
         term = pending[idx]
-        st.warning(f"🧠 Nuovo termine da apprendere: {term} ({idx+1}/{len(pending)})")
+        st.warning(f"🧠 Nuovo termine da classificare: {term} ({idx+1}/{len(pending)})")
         cat = st.selectbox("Scegli la categoria:", list(_RULES.keys()), key=f"cat_{idx}")
 
         c1, c2 = st.columns([1,1])
@@ -144,6 +149,7 @@ else:
                 local_updates[term] = cat
                 user_memory[term] = cat
                 github_save_json(user_memory)
+                st.toast(f"💾 '{term}' salvato come {cat}")
                 st.session_state.idx += 1
                 st.rerun()
 
@@ -153,7 +159,7 @@ else:
                 st.rerun()
         return
 
-    # === Report finale
+    # === Tutti classificati → Report finale
     st.success("✅ Tutto classificato. Genero il report aggiornato…")
 
     studio_isa = (
@@ -162,6 +168,7 @@ else:
         .reset_index()
         .rename(columns={col_perc: "Qtà", col_netto: "Netto"})
     )
+    # esclude eventuali valori non validi
     studio_isa = studio_isa[~studio_isa["FamigliaCategoria"].str.lower().isin(["privato", "none"])]
 
     tot_qta = studio_isa["Qtà"].sum()
@@ -170,6 +177,7 @@ else:
     studio_isa["% Netto"] = (studio_isa["Netto"]/tot_netto*100).round(2)
     studio_isa = pd.concat([studio_isa, pd.DataFrame([["Totale",tot_qta,tot_netto,100,100]], columns=studio_isa.columns)], ignore_index=True)
 
+    # === Mostra tabella colorata ===
     st.dataframe(
         studio_isa.style
         .apply(lambda r: ['background-color: #fff8b3' if r["FamigliaCategoria"] == "Totale" else '' for _ in r], axis=1)
@@ -177,12 +185,14 @@ else:
         .format({"Qtà": "{:,.0f}", "Netto": "{:,.2f}", "% Qtà": "{:.2f}", "% Netto": "{:.2f}"})
     )
 
+    # === Grafico ===
     fig, ax = plt.subplots(figsize=(8,5))
     ax.bar(studio_isa["FamigliaCategoria"], studio_isa["Netto"], color="skyblue")
     ax.set_title("Somma Netto per FamigliaCategoria")
     plt.xticks(rotation=45, ha="right")
     buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
 
+    # === Esporta in Excel ===
     wb = Workbook()
     ws = wb.active; ws.title = "Report"
     start_row, start_col = 3, 2
@@ -204,4 +214,3 @@ else:
 
 if __name__ == "__main__":
     main()
-
