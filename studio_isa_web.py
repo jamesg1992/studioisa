@@ -203,7 +203,7 @@ def main():
                     st.success("🎉 Tutti classificati e salvati automaticamente sul cloud!")
                     st.rerun()
         with c2:
-            if st.button("💾 Salva tutto ora su GitHub", key=f"save_all_{term}"):
+            if st.button("💾 Salva tutto sul cloud", key=f"save_all_{term}"):
                 mem.update(updates)
                 github_save_json_async(mem)
                 st.session_state.user_memory = mem
@@ -294,3 +294,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
