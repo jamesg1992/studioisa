@@ -83,7 +83,7 @@ def github_load_json():
     return {}
 
 def github_save_json_async(data: dict):
-    """Salva su GitHub in background"""
+    """Salva su Cloud in background"""
     def worker():
         try:
             if not (GITHUB_REPO and GITHUB_FILE and GITHUB_TOKEN): return
@@ -96,12 +96,12 @@ def github_save_json_async(data: dict):
             if sha: payload["sha"] = sha
             requests.put(url, headers=headers, data=json.dumps(payload))
         except Exception as e:
-            st.toast(f"⚠️ Errore salvataggio GitHub: {e}")
+            st.toast(f"⚠️ Errore salvataggio sul Cloud: {e}")
     threading.Thread(target=worker, daemon=True).start()
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA - Alcyon Italia (Ottimizzato 🚀)")
+    st.title("📊 Studio ISA - Alcyon Italia")
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx","xls"])
     if not up:
         st.info("Carica un file per iniziare.")
@@ -147,27 +147,40 @@ def main():
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
     if pending and st.session_state.idx < len(pending):
-        term = pending[st.session_state.idx]
-        st.warning(f"🧠 Nuovo termine: {term} ({st.session_state.idx+1}/{len(pending)})")
-        opts = list(RULES_A.keys()) if ftype=="A" else list(RULES_B.keys())
-        cat = st.selectbox("Categoria:", opts, key=f"sel_{term}")
+    term = pending[st.session_state.idx]
+    st.warning(f"🧠 Nuovo termine: {term} ({st.session_state.idx+1}/{len(pending)})")
 
-        c1, c2 = st.columns([1,1])
-        if c1.button("✅ Salva e prossimo"):
-            updates[term] = cat
-            st.session_state.local_updates = updates
-            if st.session_state.idx + 1 < len(pending):
-                st.session_state.idx += 1
-            else:
-                st.success("🎉 Tutti classificati!")
-        if c2.button("💾 Salva su GitHub"):
-            mem.update(updates)
-            github_save_json_async(mem)
-            st.session_state.user_memory = mem
-            st.session_state.local_updates = {}
-            st.session_state.idx = 0
-            st.success("✅ Dizionario aggiornato (background).")
-        st.stop()
+    # Se non esiste ancora, inizializza l'ultima categoria scelta
+    if "last_category" not in st.session_state:
+        st.session_state.last_category = list(RULES_A.keys())[0] if ftype == "A" else list(RULES_B.keys())[0]
+
+    opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
+    cat = st.selectbox(
+        "Categoria:",
+        opts,
+        key=f"sel_{term}",
+        index=opts.index(st.session_state.last_category) if st.session_state.last_category in opts else 0
+    )
+
+    c1, c2 = st.columns([1, 1])
+    if c1.button("✅ Salva e prossimo"):
+        updates[term] = cat
+        st.session_state.local_updates = updates
+        st.session_state.last_category = cat  # 🔹 memorizza la categoria corrente
+        if st.session_state.idx + 1 < len(pending):
+            st.session_state.idx += 1
+        else:
+            st.success("🎉 Tutti classificati!")
+
+    if c2.button("💾 Salva su Cloud"):
+        mem.update(updates)
+        github_save_json_async(mem)
+        st.session_state.user_memory = mem
+        st.session_state.local_updates = {}
+        st.session_state.idx = 0
+        st.success("✅ Dizionario aggiornato (background).")
+
+    st.stop()
 
     # Report
     st.success("✅ Tutti classificati. Genero Studio ISA…")
@@ -222,3 +235,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
