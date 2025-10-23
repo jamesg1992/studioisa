@@ -108,6 +108,7 @@ def github_save_json_async(data: dict):
             if sha:
                 payload["sha"] = sha
             requests.put(url, headers=headers, data=json.dumps(payload))
+            st.toast("💾 Dizionario salvato automaticamente su GitHub!")
         except Exception as e:
             st.toast(f"⚠️ Errore salvataggio sul cloud: {e}")
 
@@ -193,10 +194,16 @@ def main():
                     st.session_state.idx += 1
                     st.rerun()
                 else:
-                    st.success("🎉 Tutti classificati!")
+                    # 🧠 Tutto finito → salvataggio automatico su GitHub
+                    mem.update(updates)
+                    github_save_json_async(mem)
+                    st.session_state.user_memory = mem
+                    st.session_state.local_updates = {}
+                    st.session_state.idx = 0
+                    st.success("🎉 Tutti classificati e salvati automaticamente sul cloud!")
                     st.rerun()
         with c2:
-            if st.button("💾 Salva tutto sul cloud", key=f"save_all_{term}"):
+            if st.button("💾 Salva tutto ora su GitHub", key=f"save_all_{term}"):
                 mem.update(updates)
                 github_save_json_async(mem)
                 st.session_state.user_memory = mem
