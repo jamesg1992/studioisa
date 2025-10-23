@@ -213,11 +213,16 @@ def show_report():
     ui.download(data=out.getvalue(), filename=f"StudioISA_{ftype}_{datetime.now().year}.xlsx", label="⬇️ Scarica Excel")
 
 # === UI ===
-ui.page_title("Studio ISA – NiceGUI Edition")
-ui.label("📊 Studio ISA – NiceGUI").classes("text-2xl font-bold mb-4")
+ui.page_title("Studio ISA")
+ui.label("📊 Studio ISA").classes("text-2xl font-bold mb-4")
+
+# Upload del file
 upload = ui.upload(label="📁 Carica file Excel", multiple=False)
 content = ui.column().classes("mt-6")
 
-upload.on_upload(process_excel)
+@upload.on('upload')
+async def handle_upload(e):
+    file_bytes = await e.read()  # legge il file caricato
+    process_excel(type('obj', (object,), {'content': BytesIO(file_bytes)}))  # compatibilità con funzione esistente
 
-ui.run(title="Studio ISA – NiceGUI", reload=False, port=8080)
+ui.run(title="Studio ISA", reload=False, port=8080)
