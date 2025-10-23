@@ -109,7 +109,7 @@ def github_save_json_async(data: dict):
                 payload["sha"] = sha
             requests.put(url, headers=headers, data=json.dumps(payload))
         except Exception as e:
-            st.toast(f"⚠️ Errore salvataggio GitHub: {e}")
+            st.toast(f"⚠️ Errore salvataggio sul cloud: {e}")
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -131,6 +131,12 @@ def main():
         st.session_state.last_file = up.name
 
     df = st.session_state.df.copy()
+
+    # 🔹 Rimuove colonne non necessarie se presenti
+    for col in ["Privato", "PROFESSIONISTA", "Professionista"]:
+        if col in df.columns:
+            df.drop(columns=[col], inplace=True)
+
     mem = st.session_state.user_memory
     updates = st.session_state.local_updates
 
@@ -281,4 +287,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
