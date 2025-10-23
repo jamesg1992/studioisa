@@ -116,7 +116,7 @@ def github_save_json_async(data: dict):
 
 # === MAIN ===
 def main():
-    st.title("📊 Studio ISA - Alcyon Italia (Ottimizzato 🚀)")
+    st.title("📊 Studio ISA - Alcyon Italia")
 
     up = st.file_uploader("📁 Seleziona file Excel", type=["xlsx", "xls"])
     if not up:
@@ -281,3 +281,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
