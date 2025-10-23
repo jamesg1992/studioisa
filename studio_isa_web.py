@@ -146,40 +146,50 @@ def main():
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem|updates).keys())]
 
-    if pending and st.session_state.idx < len(pending):
+    # === Apprendimento incrementale ===
+if pending and st.session_state.idx < len(pending):
     term = pending[st.session_state.idx]
-    st.warning(f"🧠 Nuovo termine: {term} ({st.session_state.idx+1}/{len(pending)})")
+    total = len(pending)
+    progress = (st.session_state.idx + 1) / total
+    st.info(f"🧠 Da classificare: {st.session_state.idx + 1} di {total} termini ({progress:.0%} completato)")
 
-    # Se non esiste ancora, inizializza l'ultima categoria scelta
+    # Inizializza categoria precedente se non esiste
     if "last_category" not in st.session_state:
         st.session_state.last_category = list(RULES_A.keys())[0] if ftype == "A" else list(RULES_B.keys())[0]
 
+    # Mostra menù con selezione automatica dell'ultima categoria usata
     opts = list(RULES_A.keys()) if ftype == "A" else list(RULES_B.keys())
     cat = st.selectbox(
-        "Categoria:",
+        f"Categoria per “{term}”:",
         opts,
-        key=f"sel_{term}",
-        index=opts.index(st.session_state.last_category) if st.session_state.last_category in opts else 0
+        index=opts.index(st.session_state.last_category) if st.session_state.last_category in opts else 0,
+        key=f"cat_{term}"
     )
 
+    # Colonne bottoni
     c1, c2 = st.columns([1, 1])
-    if c1.button("✅ Salva e prossimo"):
-        updates[term] = cat
-        st.session_state.local_updates = updates
-        st.session_state.last_category = cat  # 🔹 memorizza la categoria corrente
-        if st.session_state.idx + 1 < len(pending):
-            st.session_state.idx += 1
-        else:
-            st.success("🎉 Tutti classificati!")
+    with c1:
+        if st.button("✅ Salva e prossimo", key=f"save_{term}"):
+            updates[term] = cat
+            st.session_state.local_updates = updates
+            st.session_state.last_category = cat  # 🔹 memorizza la categoria corrente
+            if st.session_state.idx + 1 < len(pending):
+                st.session_state.idx += 1
+            else:
+                st.success("🎉 Tutti classificati!")
+    with c2:
+        if st.button("💾 Salva tutto sul Cloud", key=f"save_all_{term}"):
+            mem.update(updates)
+            github_save_json_async(mem)
+            st.session_state.user_memory = mem
+            st.session_state.local_updates = {}
+            st.session_state.idx = 0
+            st.success("✅ Dizionario aggiornato sul Cloud")
 
-    if c2.button("💾 Salva su Cloud"):
-        mem.update(updates)
-        github_save_json_async(mem)
-        st.session_state.user_memory = mem
-        st.session_state.local_updates = {}
-        st.session_state.idx = 0
-        st.success("✅ Dizionario aggiornato (background).")
+    # Barra di avanzamento grafica
+    st.progress(progress)
 
+    # Ferma l'esecuzione fino al prossimo termine
     st.stop()
 
     # Report
@@ -235,4 +245,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
