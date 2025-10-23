@@ -3,6 +3,7 @@ import pandas as pd
 import json, os, base64, requests, re, threading
 from io import BytesIO
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
@@ -20,12 +21,44 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 def load_excel(f):
     return pd.read_excel(f)
 
-# === FUNZIONI UTILI ===
-def norm(s):
+# === UTILS ===
+def norm(s: str) -> str:
     return re.sub(r"\s+", " ", str(s).strip().lower())
 
 def any_kw_in(t, kws):
     return any(k in t for k in kws)
+
+def coerce_numeric(series: pd.Series) -> pd.Series:
+    """Converte in numerico gestendo virgole, simboli e stringhe."""
+    # replace euro/spazi/punti mille e virgole decimali
+    s = series.astype(str).str.replace(r"[€\s]", "", regex=True) \
+                          .str.replace(".", "", regex=False) \
+                          .str.replace(",", ".", regex=False)
+    return pd.to_numeric(s, errors="coerce").fillna(0)
+
+def drop_columns_robust(df: pd.DataFrame, names: list[str]) -> pd.DataFrame:
+    """Drop colonne ignorando maiuscole/spazi/varianti."""
+    to_drop = []
+    norm_names = {norm(n) for n in names}
+    for c in df.columns:
+        if norm(c) in norm_names:
+            to_drop.append(c)
+    if to_drop:
+        df = df.drop(columns=to_drop)
+    return df
+
+def round_pct_series(values: pd.Series) -> pd.Series:
+    """Arrotonda come nel desktop: somma esattamente 100."""
+    if values.sum() == 0:
+        return values
+    # calcolo percentuali precise con Decimal
+    total = Decimal(str(values.sum()))
+    raw = [Decimal(str(v)) * Decimal("100") / total for v in values]
+    rounded = [x.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) for x in raw]
+    diff = Decimal("100.00") - sum(rounded)
+    if len(rounded) > 0:
+        rounded[-1] = (rounded[-1] + diff).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return pd.Series([float(x) for x in rounded], index=values.index)
 
 # === REGOLE ===
 RULES_A = {
@@ -65,7 +98,6 @@ def classify_A(desc, fam_val, mem):
             return cat
     return "ALTRE PRESTAZIONI"
 
-
 def classify_B(prest, cat_val, mem):
     if pd.notna(cat_val) and str(cat_val).strip():
         return str(cat_val).strip()
@@ -78,7 +110,6 @@ def classify_B(prest, cat_val, mem):
             return cat
     return "Altre attività"
 
-
 # === GITHUB HANDLERS ===
 def github_load_json():
     try:
@@ -86,34 +117,40 @@ def github_load_json():
             return {}
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-        r = requests.get(url, headers=headers)
+        r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200 and "content" in r.json():
             return json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
     except Exception:
         pass
     return {}
 
+def github_save_json_sync(data: dict) -> bool:
+    """Salvataggio sincrono (affidabile) con esito True/False."""
+    try:
+        if not (GITHUB_REPO and GITHUB_FILE and GITHUB_TOKEN):
+            st.warning("⚠️ Variabili GitHub mancanti: salvataggio cloud disattivato.")
+            return False
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+        get_res = requests.get(url, headers=headers, timeout=15)
+        sha = get_res.json().get("sha") if get_res.status_code == 200 else None
+        encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")).decode("utf-8")
+        payload = {"message": "Aggiornamento dizionario Studio ISA", "content": encoded, "branch": "main"}
+        if sha:
+            payload["sha"] = sha
+        put_res = requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
+        return put_res.status_code in (200, 201)
+    except Exception:
+        return False
 
 def github_save_json_async(data: dict):
     def worker():
-        try:
-            if not (GITHUB_REPO and GITHUB_FILE and GITHUB_TOKEN):
-                return
-            url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-            headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-            get_res = requests.get(url, headers=headers)
-            sha = get_res.json().get("sha") if get_res.status_code == 200 else None
-            encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")).decode("utf-8")
-            payload = {"message": "Aggiornamento dizionario Studio ISA", "content": encoded, "branch": "main"}
-            if sha:
-                payload["sha"] = sha
-            requests.put(url, headers=headers, data=json.dumps(payload))
-            st.toast("💾 Dizionario salvato automaticamente su GitHub!")
-        except Exception as e:
-            st.toast(f"⚠️ Errore salvataggio sul cloud: {e}")
-
+        ok = github_save_json_sync(data)
+        if ok:
+            st.toast("💾 Dizionario salvato sul cloud!")
+        else:
+            st.toast("⚠️ Salvataggio sul cloud non riuscito.")
     threading.Thread(target=worker, daemon=True).start()
-
 
 # === MAIN ===
 def main():
@@ -131,12 +168,9 @@ def main():
         st.session_state.idx = 0
         st.session_state.last_file = up.name
 
+    # Copia df e rimuovi colonne extra (privato/professionista) in modo robusto
     df = st.session_state.df.copy()
-
-    # 🔹 Rimuove colonne non necessarie se presenti
-    for col in ["Privato", "PROFESSIONISTA", "Professionista"]:
-        if col in df.columns:
-            df.drop(columns=[col], inplace=True)
+    df = drop_columns_robust(df, ["Privato", "PROFESSIONISTA", "Professionista"])
 
     mem = st.session_state.user_memory
     updates = st.session_state.local_updates
@@ -145,12 +179,24 @@ def main():
     ftype = "B" if any("prestazione" in c for c in cols) and any("totaleimpon" in c for c in cols) else "A"
     st.caption(f"🔍 Tipo rilevato: {'A – DrVeto' if ftype == 'A' else 'B – VetsGo'}")
 
-    # Classificazione automatica
+    # Classificazione automatica + individuazione colonne numeriche con coercizione
     if ftype == "A":
         col_desc = next(c for c in df.columns if "descrizione" in c.lower())
         col_fam = next(c for c in df.columns if "famiglia" in c.lower())
+        # Netto (dopo sconto)
         col_netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
-        col_perc = next(c for c in df.columns if c.strip() == "%")
+        # Quantità: priorità a "Quantità" o "Quantità / %" altrimenti usa "%" (come nello script desktop)
+        qty_candidates = [c for c in df.columns if norm(c) in {"quantita", "quantita/%", "quantita/%", "quantità", "quantità/%"}]
+        if qty_candidates:
+            col_perc = qty_candidates[0]
+        else:
+            # fallback storico: la colonna "%" nel DrVeto è quella sommata come Qtà
+            col_perc = next(c for c in df.columns if c.strip() == "%")
+
+        # coerce numerico
+        df[col_netto] = coerce_numeric(df[col_netto])
+        df[col_perc]  = coerce_numeric(df[col_perc])
+
         df["FamigliaCategoria"] = df.apply(lambda r: classify_A(r[col_desc], r[col_fam], mem | updates), axis=1)
         base_col, cat_col = col_desc, "FamigliaCategoria"
     else:
@@ -158,11 +204,18 @@ def main():
         col_cat = next(c for c in df.columns if "categoria" in c.lower())
         col_imp = next(c for c in df.columns if "totaleimpon" in c.lower())
         col_iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
-        col_tot = [c for c in df.columns if c.lower().strip() == "totale"]
-        col_tot = col_tot[0] if col_tot else next(c for c in df.columns if "totale" in c.lower())
+        col_tot_list = [c for c in df.columns if c.lower().strip() == "totale"]
+        col_tot = col_tot_list[0] if col_tot_list else next(c for c in df.columns if "totale" in c.lower())
+
+        # coerce numerico
+        df[col_imp] = coerce_numeric(df[col_imp])
+        df[col_iva] = coerce_numeric(df[col_iva])
+        df[col_tot] = coerce_numeric(df[col_tot])
+
         df["Categoria"] = df.apply(lambda r: classify_B(r[col_prest], r[col_cat], mem | updates), axis=1)
         base_col, cat_col = col_prest, "Categoria"
 
+    # Costruisci lista termini da apprendere
     all_terms = sorted({str(v).strip() for v in df[base_col].dropna().unique()}, key=lambda s: s.casefold())
     pending = [t for t in all_terms if not any(norm(k) in norm(t) for k in (mem | updates).keys())]
 
@@ -194,22 +247,28 @@ def main():
                     st.session_state.idx += 1
                     st.rerun()
                 else:
-                    # 🧠 Tutto finito → salvataggio automatico su GitHub
+                    # 🧠 Tutto finito → salvataggio automatico su GitHub (SINCRONO per affidabilità)
                     mem.update(updates)
-                    github_save_json_async(mem)
+                    ok = github_save_json_sync(mem)
                     st.session_state.user_memory = mem
                     st.session_state.local_updates = {}
                     st.session_state.idx = 0
-                    st.success("🎉 Tutti classificati e salvati automaticamente sul cloud!")
+                    if ok:
+                        st.success("🎉 Tutti classificati e salvati automaticamente sul cloud!")
+                    else:
+                        st.warning("⚠️ Tutti classificati, ma NON sono riuscito a salvare sul cloud. Contatta l'amministratore.")
                     st.rerun()
         with c2:
             if st.button("💾 Salva tutto sul cloud", key=f"save_all_{term}"):
                 mem.update(updates)
-                github_save_json_async(mem)
+                ok = github_save_json_sync(mem)
                 st.session_state.user_memory = mem
                 st.session_state.local_updates = {}
                 st.session_state.idx = 0
-                st.success("✅ Dizionario aggiornato sul cloud.")
+                if ok:
+                    st.success("✅ Dizionario aggiornato sul cloud.")
+                else:
+                    st.warning("⚠️ Salvataggio sul cloud non riuscito. Contatta l'amministratore.")
                 st.rerun()
 
         st.progress(progress)
@@ -219,45 +278,50 @@ def main():
     st.success("✅ Tutti classificati. Genero Studio ISA…")
 
     if ftype == "A":
-        col_netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
-        col_perc = next(c for c in df.columns if c.strip() == "%")
+        # usa le stesse variabili scelte sopra
         studio = df.groupby(cat_col, dropna=False).agg({col_perc: "sum", col_netto: "sum"}).reset_index()
         studio.columns = ["FamigliaCategoria", "Qtà", "Netto"]
-        tot_q, tot_n = studio["Qtà"].sum(), studio["Netto"].sum()
-        studio["% Qtà"] = (studio["Qtà"] / tot_q * 100).round(2)
-        studio["% Netto"] = (studio["Netto"] / tot_n * 100).round(2)
-        studio = pd.concat(
-            [studio, pd.DataFrame([["Totale", tot_q, tot_n, 100, 100]], columns=studio.columns)], ignore_index=True
-        )
+
+        # percentuali robuste come desktop
+        studio["% Qtà"] = round_pct_series(studio["Qtà"])
+        studio["% Netto"] = round_pct_series(studio["Netto"])
+
+        # Totali
+        tot_row = pd.DataFrame([{
+            "FamigliaCategoria": "Totale",
+            "Qtà": float(studio["Qtà"].sum()),
+            "Netto": float(studio["Netto"].sum()),
+            "% Qtà": 100.00,
+            "% Netto": 100.00
+        }])
+        studio = pd.concat([studio, tot_row], ignore_index=True)
+
+        # grafico
+        xlab = "FamigliaCategoria"; ylab = "Netto"; title = "Somma Netto per FamigliaCategoria"
+
     else:
-        col_imp = next(c for c in df.columns if "totaleimpon" in c.lower())
-        col_iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
-        col_tot = [c for c in df.columns if c.lower().strip() == "totale"]
-        col_tot = col_tot[0] if col_tot else next(c for c in df.columns if "totale" in c.lower())
         studio = df.groupby(cat_col, dropna=False).agg({col_imp: "sum", col_iva: "sum", col_tot: "sum"}).reset_index()
         studio.columns = ["Categoria", "TotaleImponibile", "TotaleConIVA", "Totale"]
-        tot_t = studio["Totale"].sum()
-        studio["% Totale"] = (studio["Totale"] / tot_t * 100).round(2)
-        studio = pd.concat(
-            [
-                studio,
-                pd.DataFrame(
-                    [["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), tot_t, 100]],
-                    columns=studio.columns,
-                ),
-            ],
-            ignore_index=True,
-        )
+
+        # % Totale robusta
+        studio["% Totale"] = round_pct_series(studio["Totale"])
+
+        tot_row = pd.DataFrame([{
+            "Categoria": "Totale",
+            "TotaleImponibile": float(studio["TotaleImponibile"].sum()),
+            "TotaleConIVA": float(studio["TotaleConIVA"].sum()),
+            "Totale": float(studio["Totale"].sum()),
+            "% Totale": 100.00
+        }])
+        studio = pd.concat([studio, tot_row], ignore_index=True)
+
+        xlab = "Categoria"; ylab = "Totale"; title = "Somma Totale per Categoria"
 
     # === GRAFICO ===
     st.dataframe(studio)
     fig, ax = plt.subplots(figsize=(8, 5))
-    if ftype == "A":
-        ax.bar(studio["FamigliaCategoria"], studio["Netto"], color="skyblue")
-        ax.set_title("Somma Netto per FamigliaCategoria")
-    else:
-        ax.bar(studio["Categoria"], studio["Totale"], color="skyblue")
-        ax.set_title("Somma Totale per Categoria")
+    ax.bar(studio[xlab].astype(str), studio[ylab])
+    ax.set_title(title)
     plt.xticks(rotation=45, ha="right")
     buf = BytesIO()
     plt.tight_layout()
@@ -294,4 +358,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
