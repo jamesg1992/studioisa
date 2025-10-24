@@ -100,7 +100,7 @@ RULES_B = {
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam, mem):
-    if fam and fam.lower() not in {"privato","professionista"}:
+    if fam and str(fam).strip() and str(fam).lower() not in {"privato","professionista"}:
         return fam.strip()
     d = norm(desc)
     for k,v in mem.items():
@@ -112,7 +112,7 @@ def classify_A(desc, fam, mem):
     return "ALTRE PRESTAZIONI"
 
 def classify_B(prest, cat, mem):
-    if cat and cat.strip():
+    if cat and str(cat).strip():
         return cat.strip()
     d = norm(prest)
     for k,v in mem.items():
@@ -299,3 +299,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
