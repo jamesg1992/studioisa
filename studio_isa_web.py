@@ -100,29 +100,46 @@ RULES_B = {
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam, mem):
-    if fam and str(fam).strip() and str(fam).lower() not in {"privato","professionista"}:
-        return fam.strip()
+    # Converti in stringa sicura
+    fam_s = norm(fam) if fam is not None else ""
+
+    # Se la famiglia è già compilata ed è valida → tienila
+    if fam_s and fam_s not in {"privato", "professionista", "nan", "none", ""}:
+        return fam_s.upper()
+
+    # Normalizza descrizione
     d = norm(desc)
-    for k,v in mem.items():
+
+    # Se è nel dizionario personalizzato
+    for k, v in mem.items():
         if norm(k) in d:
             return v
-    for cat,keys in RULES_A.items():
+
+    # Applica regole
+    for cat, keys in RULES_A.items():
         if any_kw_in(d, keys):
             return cat
+
     return "ALTRE PRESTAZIONI"
 
+
 def classify_B(prest, cat, mem):
-    if cat and str(cat).strip():
-        return cat.strip()
+    cat_s = norm(cat) if cat is not None else ""
+
+    if cat_s and cat_s not in {"nan", "none", ""}:
+        return cat_s.upper()
+
     d = norm(prest)
-    for k,v in mem.items():
+
+    for k, v in mem.items():
         if norm(k) in d:
             return v
-    for cat,keys in RULES_B.items():
+
+    for cat, keys in RULES_B.items():
         if any_kw_in(d, keys):
             return cat
-    return "Altre attività"
 
+    return "Altre attività"
 # === MAIN ===
 def main():
     st.title("📊 Studio ISA – DrVeto + VetsGo")
@@ -299,4 +316,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
