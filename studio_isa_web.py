@@ -204,9 +204,22 @@ def main():
                 st.session_state.new = new
                 st.session_state.idx += 1
                 if st.session_state.idx >= len(pending):
-                    mem.update(new)
-                    github_save_json(mem)
-                    st.success("🎉 Tutti salvati su GitHub!")
+                # Aggiorna dizionario
+                mem.update(new)
+                st.session_state.mem = mem
+                st.session_state.new = {}
+
+                # Salva su GitHub
+                github_save_json(mem)
+
+                # Messaggio finale
+                st.success("🎉 Tutti i termini sono stati classificati e salvati sul cloud!")
+
+                # Reset per nuovo file
+                st.session_state.idx = 0
+                st.stop()    
+            else:
+                st.session_state.idx += 1
                 st.rerun()
             st.stop()
 
@@ -316,5 +329,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
