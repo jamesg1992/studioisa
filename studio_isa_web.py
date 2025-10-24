@@ -224,7 +224,7 @@ def main():
                 st.session_state.mem = mem
                 st.session_state.new = {}
                 github_save_json(mem)
-                st.success("🎉 Tutti i termini classificati e salvati su GitHub!")
+                st.success("🎉 Tutti i termini classificati e salvati sul cloud!")
                 st.session_state.idx = 0
                 st.stop()
 
@@ -300,3 +300,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
