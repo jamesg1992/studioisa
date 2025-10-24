@@ -12,7 +12,10 @@ import matplotlib.pyplot as plt
 
 # === CONFIG ===
 st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
-GITHUB_FILE = os.getenv("GITHUB_FILE", "keywords_memory.json")
+
+GITHUB_FILE_A = "dizionario_drveto.json"
+GITHUB_FILE_B = "dizionario_vetsgo.json"
+
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -50,27 +53,27 @@ def load_excel(file):
 # === GITHUB ===
 def github_load_json():
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
         r = requests.get(url, headers=headers, timeout=12)
         if r.status_code == 200:
             return json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
-    except Exception:
-        return {}
+    except:
+        pass
     return {}
 
 def github_save_json(data: dict):
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
         get = requests.get(url, headers=headers, timeout=12)
         sha = get.json().get("sha") if get.status_code == 200 else None
         encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
-        payload = {"message": "Update keywords", "content": encoded, "branch": "main"}
+        payload = {"message": "Update dizionario", "content": encoded, "branch": "main"}
         if sha:
             payload["sha"] = sha
         requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
-    except Exception:
+    except:
         pass
 
 # === REGOLE ===
@@ -145,6 +148,9 @@ def main():
 
     # === DRVETO (Tipo A) ===
     if mode == "A":
+        st.session_state.mem = github_load_json(GITHUB_FILE_A)
+    else:
+        st.session_state.mem = github_load_json(GITHUB_FILE_B)
         desc = next(c for c in df.columns if "descrizione" in c.lower())
         # individua la "famiglia prestazione / categoria prodotto", NON "famiglia cliente"
         fam_candidates = [c for c in df.columns if "famiglia" in c.lower()]
@@ -315,5 +321,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
