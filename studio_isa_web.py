@@ -158,10 +158,25 @@ def main():
         df[qta] = coerce_numeric(df[qta])
         df[netto] = coerce_numeric(df[netto])
 
-        df["CategoriaFinale"] = df.apply(
-            lambda r: classify_A(r[desc], r[fam] if fam else None, mem | new),
-            axis=1
-        )
+        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, None, mem | new))
+
+        # mappa eventuali categorie sbagliate, doppie o da unificare:
+        map_reduce = {
+            "visita": "Visite ambulatoriali",
+            "controllo": "Visite ambulatoriali",
+            "dermatologico": "Visite ambulatoriali",
+            "esame": "Altri esami diagnostici",
+            "laboratorio": "Altri esami diagnostici",
+            "emocromo": "Altri esami diagnostici",
+            "flebo": "Visite ambulatoriali",
+            "terapia": "Visite ambulatoriali",
+            "endoscopia": "Interventi chirurgici",
+            "anestesia": "Interventi chirurgici",
+            "otoematoma": "Interventi chirurgici",
+            "acconto": "Altre attività",
+        }
+
+        df["CategoriaFinale"] = df["CategoriaFinale"].replace(map_reduce, regex=True)
         # rimuovi eventuali residui cliente
         df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
 
@@ -300,4 +315,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
