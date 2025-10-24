@@ -172,34 +172,46 @@ def main():
 
     # === APPRENDIMENTO ===
     terms = sorted({str(v).strip() for v in df[base].dropna().unique()}, key=str.casefold)
-    pending = [t for t in terms if not any(norm(k) in norm(t) for k in (mem|new).keys())]
+    pending = [t for t in terms if not any(norm(k) in norm(t) for k in (mem | new).keys())]
 
-    if pending:
-        term = pending[st.session_state.idx]
-        st.warning(f"🧠 Da classificare: {st.session_state.idx+1}/{len(pending)} → “{term}”")
-
-        opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
-        last = st.session_state.get("last_cat", opts[0])
-        cat_sel = st.selectbox("Categoria:", opts, index=opts.index(last) if last in opts else 0)
-
-        if st.button("✅ Salva e prossimo"):
-            new[term] = cat_sel
-            st.session_state.new = new
-            st.session_state.last_cat = cat_sel
-
-            if st.session_state.idx + 1 >= len(pending):
-                mem.update(new)
-                st.session_state.mem = mem
-                st.session_state.new = {}
-                github_save_json(mem)
-                st.success("🎉 Tutti i termini salvati sul cloud!")
-                st.session_state.idx = 0
-                st.stop()
-
-            st.session_state.idx += 1
-            st.rerun()
-
-        st.stop()
+    if not pending:
+        st.session_state.idx = 0
+	else:
+        idx = st.session_state.get("idx", 0)
+		if idx >= len(pending) or idx < 0:
+		idx = 0
+		st.session_state.idx = 0
+		
+		term = pending[idx]
+		st.warning(f"🧠 Da classificare: {idx+1}/{len(pending)} → “{term}”")
+		opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
+		last = st.session_state.get("last_cat", opts[0])
+		
+		try:
+			default_index = opts.index(last)
+		except ValueError:
+			default_index = 0
+			
+		cat_sel = st.selectbox("Categoria:", opts, index=default_index, key=f"sel_{idx}")
+		
+		if st.button("✅ Salva e prossimo", key=f"save_{idx}"):
+			new[term] = cat_sel
+			st.session_state.new = new
+			st.session_state.last_cat = cat_sel
+			
+			if idx + 1 >= len(pending):
+				mem.update(new)
+				st.session_state.mem = mem
+				st.session_state.new = {}
+				github_save_json(mem)
+				st.success("🎉 Tutti i termini classificati e salvati su GitHub!")
+				st.session_state.idx = 0
+				st.stop()
+				
+			st.session_state.idx = idx + 1
+			st.rerun()
+			
+		st.stop()
 
     # === REPORT ===
     if mode=="A":
