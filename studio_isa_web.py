@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 # === CONFIG ===
 st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
 
-GITHUB_FILE_A = "dizionario_drveto.json"   # dizionario DrVeto
-GITHUB_FILE_B = "dizionario_vetsgo.json"   # dizionario VetsGo
+GITHUB_FILE_A = "dizionario_drveto.json"
+GITHUB_FILE_B = "dizionario_vetsgo.json"
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -54,7 +54,7 @@ def github_load_json(file_name):
         headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
         r = requests.get(url, headers=headers, timeout=12)
         if r.status_code == 200:
-            return json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
+            return {norm(k): v for k, v in json.loads(base64.b64decode(r.json()["content"]).decode("utf-8")).items()}
     except:
         pass
     return {}
@@ -154,9 +154,7 @@ def main():
     # ==== TIPO A ====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
-        fam_candidates = [c for c in df.columns if "famiglia" in c.lower()]
-        fam_pref = [c for c in fam_candidates if ("prestazione" in c.lower()) or ("categoria" in c.lower()) or ("/" in c)]
-        fam = fam_pref[0] if fam_pref else None
+        fam = next((c for c in df.columns if "famiglia" in c.lower()), None)
         qta = next(c for c in df.columns if "quant" in c.lower() or c.strip()=="%")
         netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
 
@@ -164,68 +162,55 @@ def main():
         df[netto] = coerce_numeric(df[netto])
         df["_clean"] = df[desc].map(norm)
         df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem|new), axis=1)
-
-        # rimuovi eventuali famiglie indesiderate
         df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
 
     # ==== TIPO B ====
     else:
         prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ","").lower())
         imp = next(c for c in df.columns if "totaleimpon" in c.lower())
-
-        # trova TotaleConIVA se esiste, altrimenti None (la gestiamo più avanti)
-        iva_candidates = [c for c in df.columns if "totaleconiva" in c.replace(" ","").lower()]
-        iva = iva_candidates[0] if iva_candidates else None
-
-        # trova Totale (esatto o simile)
-        tot_candidates = [c for c in df.columns if c.lower().strip()=="totale"]
-        tot = tot_candidates[0] if tot_candidates else next(c for c in df.columns if "totale" in c.lower())
+        iva_col = next((c for c in df.columns if "totaleconiva" in c.replace(" ","").lower()), None)
+        tot = next(c for c in df.columns if c.lower().strip()=="totale" or "totale" in c.lower())
 
         df[imp] = coerce_numeric(df[imp])
-        if iva:
-            df[iva] = coerce_numeric(df[iva])
+        if iva_col:
+            df[iva_col] = coerce_numeric(df[iva_col])
         df[tot] = coerce_numeric(df[tot])
 
         df["_clean"] = df[prest].map(norm)
         df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem|new))
-
-        # rimuovi eventuali categorie indesiderate
         df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
 
-    # === APPRENDIMENTO (no duplicati) ===
+    # === APPRENDIMENTO ===
     learned = {norm(k) for k in (mem|new).keys()}
-    base_col = desc if mode=="A" else prest
-    df["_clean"] = df[base_col].astype(str).map(norm)
+    base = desc if mode=="A" else prest
+    df["_clean"] = df[base].astype(str).map(norm)
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
         idx = st.session_state.idx
-        if idx >= len(pending): idx = 0
-
         term = pending[idx]
-        st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
 
         opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
         last = st.session_state.get("last_cat", opts[0])
         default_index = opts.index(last) if last in opts else 0
 
+        st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
         cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
         if st.button("✅ Salva e prossimo"):
-            new[term] = cat_sel
+            new[norm(term)] = cat_sel
             st.session_state.new = new
             st.session_state.last_cat = cat_sel
 
             if idx + 1 >= len(pending):
                 mem.update(new)
-                st.session_state.mem = mem
-                st.session_state.new = {}
                 github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
-                st.success("🎉 Tutti i termini classificati e salvati sul cloud!")
+                st.success("🎉 Tutto classificato e salvato!")
                 st.session_state.idx = 0
+                st.session_state.new = {}
                 st.stop()
 
-            st.session_state.idx = idx + 1
+            st.session_state.idx += 1
             st.rerun()
 
         st.stop()
@@ -239,36 +224,19 @@ def main():
         studio["% Qtà"] = round_pct(studio["Qtà"])
         studio["% Netto"] = round_pct(studio["Netto"])
         studio.loc[len(studio)] = ["Totale", studio["Qtà"].sum(), studio["Netto"].sum(), 100, 100]
-        ycol, title = "Netto", "Somma Netto per Categoria"
+        ycol = "Netto"
+        title = "Somma Netto per Categoria"
 
     else:
-        # Se manca TotaleConIVA nel file, la creiamo automaticamente copiando Totale
-        if "TotaleConIVA" not in [c.strip() for c in df.columns]:
-            # se esiste una colonna trovata come 'iva' usiamola, altrimenti duplichiamo 'tot'
-            if iva:
-                df.rename(columns={iva: "TotaleConIVA"}, inplace=True)
-            else:
-                df["TotaleConIVA"] = df[tot]
-
-        studio = df.groupby("CategoriaFinale").agg({
-            imp: "sum",
-            "TotaleConIVA": "sum",
-        }).reset_index()
-
+        iva_col = next(c for c in df.columns if "totaleconiva" in c.replace(" ","").lower())
+        studio = df.groupby("CategoriaFinale").agg({imp:"sum", iva_col:"sum"}).reset_index()
         studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA"]
         studio["% Totale"] = round_pct(studio["TotaleConIVA"])
-
-        studio.loc[len(studio)] = [
-            "Totale",
-            studio["TotaleImponibile"].sum(),
-            studio["TotaleConIVA"].sum(),
-            100
-        ]
-
-        # Ordine fisso categorie VetsGo
+        studio.loc[len(studio)] = ["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), 100]
         studio["Categoria"] = pd.Categorical(studio["Categoria"], categories=ORDER_B, ordered=True)
         studio = studio.sort_values("Categoria")
-        ycol, title = "Totale", "Somma Totale per Categoria"
+        ycol = "TotaleConIVA"
+        title = "Somma Totale con IVA per Categoria"
 
     st.dataframe(studio)
 
@@ -288,4 +256,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
