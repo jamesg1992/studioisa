@@ -223,7 +223,7 @@ def main():
                 mem.update(new)
                 st.session_state.mem = mem
                 st.session_state.new = {}
-                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
+                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, st.session_state.mem)
                 st.success("🎉 Tutto salvato sul cloud!")
                 st.session_state.idx = 0
                 st.stop()
@@ -279,3 +279,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
