@@ -253,17 +253,15 @@ def main():
         studio = df.groupby("CategoriaFinale").agg({
             imp: "sum",
             "TotaleConIVA": "sum",
-            tot: "sum"
         }).reset_index()
 
-        studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA","Totale"]
-        studio["% Totale"] = round_pct(studio["Totale"])
+        studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA"]
+        studio["% Totale"] = round_pct(studio["TotaleConIVA"])
 
         studio.loc[len(studio)] = [
             "Totale",
             studio["TotaleImponibile"].sum(),
             studio["TotaleConIVA"].sum(),
-            studio["Totale"].sum(),
             100
         ]
 
@@ -290,3 +288,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
