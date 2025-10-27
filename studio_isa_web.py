@@ -107,6 +107,18 @@ ORDER_B = [
     "Altre attività",
     "Totale"
 ]
+#Nome file lo prende dalla colonna del file excel
+def detect_year(df):
+    date_cols = [c for c in df.columns if "data" in c.lower()]
+    for col in date_cols:
+        try:
+            dates = pd.to_datetime(df[col], errors="coerce")
+            year = dates.dt.year.dropna().mode()[0]
+            return int(year)
+        except:
+            pass
+        return datetime.now().year
+
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam, mem):
@@ -258,9 +270,11 @@ def main():
         ws.append(r)
     ws.add_image(XLImage(buf), f"A{len(studio)+3}")
     out = BytesIO(); wb.save(out)
-    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
+    anno = detect_year(df)
+    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{anno}.xlsx")
 
 if __name__ == "__main__":
     main()
+
 
 
