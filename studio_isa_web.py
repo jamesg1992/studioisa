@@ -190,7 +190,10 @@ def main():
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
-        idx = st.session_state.idx
+        idx = st.session_state.get("idx", 0)
+        if idx >= len(pending):
+            idx = 0
+            st.session_state.idx = 0
         term = pending[idx]
 
         opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
@@ -259,4 +262,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
