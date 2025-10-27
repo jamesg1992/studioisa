@@ -295,7 +295,7 @@ def main():
         anni = sorted(df["Anno"].dropna().unique())
         anno_sel = st.selectbox("Seleziona Anno:", anni, index=len(anni)-1)
 
-        dfY = df[df["Anno"] == ano_sel]
+        dfY = df[df["Anno"] == anno_sel]
 
         # === 1) Trend Mensile ===
         monthly = dfY.groupby("Mese")[value_col].sum().reset_index()
@@ -322,6 +322,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
