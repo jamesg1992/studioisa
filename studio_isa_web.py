@@ -145,7 +145,7 @@ def classify_B(prest, mem):
     return "Altre attività"
 
 # === MAIN ===
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale"])
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA"])
 def main():
     st.title("📊 Studio ISA – DrVeto + VetsGo")
 
@@ -322,6 +322,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
