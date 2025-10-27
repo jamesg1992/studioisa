@@ -280,7 +280,12 @@ def main():
 
         # Trova colonna data
         date_col = next(c for c in df.columns if "data" in c.replace(" ", "").lower())
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df[date_col] = (
+            df[date_col]
+            .astype(str)
+            .str.extract(r'(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})')[0]
+            .apply(lambda x: pd.to_datetime(x, dayfirst=True, errors="coerce"))
+        )
 
         # Colonna importo in base al gestionale
         if mode == "A":
@@ -299,6 +304,9 @@ def main():
 
         # === 1) Trend Mensile ===
         monthly = dfY.groupby("Mese")[value_col].sum().reset_index()
+
+        all_months = pd.period_range(f"{anno_sel}-01", f"{anno_sel}-12", freq="M").astype(str)
+        monthly = monthly.set_index("Mese").reindex(all_months, fill_value=0).reset_index().rename(columns={"index":"Mese"})
 
         st.subheader("Trend Fatturato Mensile")
         st.line_chart(monthly.set_index("Mese"))
@@ -337,6 +345,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
