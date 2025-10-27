@@ -145,7 +145,7 @@ def classify_B(prest, mem):
     return "Altre attività"
 
 # === MAIN ===
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA"])
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA(ancora non attivo)"])
 def main():
     st.title("📊 Studio ISA – DrVeto + VetsGo")
 
@@ -303,6 +303,21 @@ def main():
         st.subheader("Trend Fatturato Mensile")
         st.line_chart(monthly.set_index("Mese"))
 
+        #Salva grafico mensile
+        fig_m, ax_m = plt.subplots(figsize=(8,5))
+        ax_m.plot(monthly["Mese"], monthly[value_col], marker="o")
+        ax_m.set_title(f"Trend Mensile {anno_sel}")
+        plt.xticks(rotation=45, ha="right")
+        buf_m = BytesIO(); plt.tight_layout(); plt.savefig(buf_m, format="png"); buf_m.seek(0)
+        st.image(buf_m)
+
+        st.download_button(
+            "📸 Scarica grafico mensile (PNG)",
+            data=buf_m.getvalue(),
+            file_name=f"Trend_Mensile_{anno_sel}.png",
+            mime="image/png"
+        )
+
         # === 2) Ripartizione Categorie ===
         catshare = dfY.groupby("CategoriaFinale")[value_col].sum().reset_index()
         catshare["%"] = round_pct(catshare[value_col])
@@ -322,6 +337,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
