@@ -145,6 +145,7 @@ def classify_B(prest, mem):
     return "Altre attività"
 
 # === MAIN ===
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale"])
 def main():
     st.title("📊 Studio ISA – DrVeto + VetsGo")
 
@@ -273,8 +274,55 @@ def main():
     anno = detect_year(df)
     st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{anno}.xlsx")
 
+    # === DASHBOARD ANNUALE ===
+    if page == "Dashboard Annuale":
+        st.header("📈 Dashboard Andamento Annuale")
+
+        # Trova colonna data
+        date_col = next(c for c in df.columns if "data" in c.replace(" ", "").lower())
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+        # Colonna importo in base al gestionale
+        if mode == "A":
+            value_col = netto   # DrVeto usa NETTO DOPO SCONTO
+        else:
+            value_col = tot     # VetsGo usa TOTALE
+
+        # Estrai anno e mese
+        df["Anno"] = df[date_col].dt.year
+        df["Mese"] = df[date_col].dt.to_period("M").astype(str)
+
+        anni = sorted(df["Anno"].dropna().unique())
+        anno_sel = st.selectbox("Seleziona Anno:", anni, index=len(anni)-1)
+
+        dfY = df[df["Anno"] == ano_sel]
+
+        # === 1) Trend Mensile ===
+        monthly = dfY.groupby("Mese")[value_col].sum().reset_index()
+
+        st.subheader("Trend Fatturato Mensile")
+        st.line_chart(monthly.set_index("Mese"))
+
+        # === 2) Ripartizione Categorie ===
+        catshare = dfY.groupby("CategoriaFinale")[value_col].sum().reset_index()
+        catshare["%"] = round_pct(catshare[value_col])
+
+        st.subheader("Ripartizione per Categoria")
+        st.bar_chart(catshare.set_index("CategoriaFinale")["%"])
+
+        # === 3) Andamento delle Categorie nel tempo ===
+        area = dfY.groupby(["Mese", "CategoriaFinale"])[value_col].sum().reset_index()
+        area = area.pivot(index="Mese", columns="CategoriaFinale", values=value_col).fillna(0)
+
+        st.subheader("Andamento Categorie nel Tempo")
+        st.area_chart(area)
+
+        st.stop()
+    
+
 if __name__ == "__main__":
     main()
+
 
 
 
