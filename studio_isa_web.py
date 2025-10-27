@@ -25,9 +25,12 @@ def norm(s):
 def any_kw_in(t, keys):
     return any(k in t for k in keys)
 
-def coerce_numeric(s):
+def coerce_numeric(s: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(s):
+        return pd.to_numeric(s, errors="coerce").fillna(0)
     s = (s.astype(str)
-         .str.replace(r"[€\s]", "", regex=True)
+         .str.replace(r"\s", "", regex=True)
+         .str.replace("€", "", regex=False)
          .str.replace(".", "", regex=False)
          .str.replace(",", ".", regex=False))
     return pd.to_numeric(s, errors="coerce").fillna(0)
@@ -256,3 +259,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
