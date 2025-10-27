@@ -165,21 +165,37 @@ def main():
         df["_clean"] = df[desc].map(norm)
         df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem|new), axis=1)
 
+        # rimuovi eventuali famiglie indesiderate
+        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
+
     # ==== TIPO B ====
     else:
         prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ","").lower())
         imp = next(c for c in df.columns if "totaleimpon" in c.lower())
-        iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ","").lower())
-        tot = next(c for c in df.columns if c.lower().strip()=="totale" or "totale" in c.lower())
+
+        # trova TotaleConIVA se esiste, altrimenti None (la gestiamo più avanti)
+        iva_candidates = [c for c in df.columns if "totaleconiva" in c.replace(" ","").lower()]
+        iva = iva_candidates[0] if iva_candidates else None
+
+        # trova Totale (esatto o simile)
+        tot_candidates = [c for c in df.columns if c.lower().strip()=="totale"]
+        tot = tot_candidates[0] if tot_candidates else next(c for c in df.columns if "totale" in c.lower())
 
         df[imp] = coerce_numeric(df[imp])
-        df[iva] = coerce_numeric(df[iva])
+        if iva:
+            df[iva] = coerce_numeric(df[iva])
         df[tot] = coerce_numeric(df[tot])
+
         df["_clean"] = df[prest].map(norm)
         df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem|new))
 
-    # === APPRENDIMENTO ===
+        # rimuovi eventuali categorie indesiderate
+        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
+
+    # === APPRENDIMENTO (no duplicati) ===
     learned = {norm(k) for k in (mem|new).keys()}
+    base_col = desc if mode=="A" else prest
+    df["_clean"] = df[base_col].astype(str).map(norm)
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
@@ -226,9 +242,23 @@ def main():
         ycol, title = "Netto", "Somma Netto per Categoria"
 
     else:
-        studio = df.groupby("CategoriaFinale").agg({imp:"sum", iva:"sum", tot:"sum"}).reset_index()
+        # Se manca TotaleConIVA nel file, la creiamo automaticamente copiando Totale
+        if "TotaleConIVA" not in [c.strip() for c in df.columns]:
+            # se esiste una colonna trovata come 'iva' usiamola, altrimenti duplichiamo 'tot'
+            if iva:
+                df.rename(columns={iva: "TotaleConIVA"}, inplace=True)
+            else:
+                df["TotaleConIVA"] = df[tot]
+
+        studio = df.groupby("CategoriaFinale").agg({
+            imp: "sum",
+            "TotaleConIVA": "sum",
+            tot: "sum"
+        }).reset_index()
+
         studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA","Totale"]
         studio["% Totale"] = round_pct(studio["Totale"])
+
         studio.loc[len(studio)] = [
             "Totale",
             studio["TotaleImponibile"].sum(),
@@ -236,6 +266,8 @@ def main():
             studio["Totale"].sum(),
             100
         ]
+
+        # Ordine fisso categorie VetsGo
         studio["Categoria"] = pd.Categorical(studio["Categoria"], categories=ORDER_B, ordered=True)
         studio = studio.sort_values("Categoria")
         ycol, title = "Totale", "Somma Totale per Categoria"
@@ -250,7 +282,8 @@ def main():
     st.image(buf)
 
     wb = Workbook(); ws = wb.active; ws.title = "Report"
-    for r in dataframe_to_rows(studio, index=False, header=True): ws.append(r)
+    for r in dataframe_to_rows(studio, index=False, header=True):
+        ws.append(r)
     ws.add_image(XLImage(buf), f"A{len(studio)+3}")
     out = BytesIO(); wb.save(out)
     st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
