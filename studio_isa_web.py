@@ -25,13 +25,14 @@ def norm(s):
 def any_kw_in(t, keys):
     return any(k in t for k in keys)
 
-def coerce_numeric(s: pd.Series) -> pd.Series:
-    s = (s.astype(str).str.replace(r"[€\s]", "", regex=True)
+def coerce_numeric(s):
+    s = (s.astype(str)
+         .str.replace(r"[€\s]", "", regex=True)
          .str.replace(".", "", regex=False)
          .str.replace(",", ".", regex=False))
     return pd.to_numeric(s, errors="coerce").fillna(0)
 
-def round_pct(values: pd.Series) -> pd.Series:
+def round_pct(values):
     values = pd.to_numeric(values, errors="coerce").fillna(0)
     total = Decimal(str(values.sum()))
     if total == 0:
@@ -42,7 +43,7 @@ def round_pct(values: pd.Series) -> pd.Series:
     rounded[-1] = (rounded[-1] + diff).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return pd.Series([float(x) for x in rounded], index=values.index)
 
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def load_excel(file):
     return pd.read_excel(file)
 
@@ -100,7 +101,8 @@ ORDER_B = [
     "Esami diagnostici per immagine",
     "Altri esami diagnostici",
     "Interventi chirurgici",
-    "Altre attività"
+    "Altre attività",
+    "Totale"
 ]
 
 # === CLASSIFICAZIONE ===
@@ -110,19 +112,21 @@ def classify_A(desc, fam, mem):
         return fam_s.upper()
     d = norm(desc)
     for k,v in mem.items():
-        if norm(k) in d: return v
-    for cat,keys in RULES_A.items():
-        if any_kw_in(d, keys): return cat
+        if norm(k) in d:
+            return v
+    for cat, keys in RULES_A.items():
+        if any_kw_in(d, keys):
+            return cat
     return "ALTRE PRESTAZIONI"
 
-def classify_B(prest, cat, mem):
+def classify_B(prest, mem):
     d = norm(prest)
     for k,v in mem.items():
         if norm(k) in d:
             return v
-    for category, keys in RULES_B.items():
+    for cat, keys in RULES_B.items():
         if any_kw_in(d, keys):
-            return category
+            return cat
     return "Altre attività"
 
 # === MAIN ===
@@ -136,15 +140,9 @@ def main():
     if "df" not in st.session_state:
         df = load_excel(file)
         st.session_state.df = df
-
         mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
         st.session_state.mode = mode
-
-        if mode == "A":
-            st.session_state.mem = github_load_json(GITHUB_FILE_A)
-        else:
-            st.session_state.mem = github_load_json(GITHUB_FILE_B)
-
+        st.session_state.mem = github_load_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
         st.session_state.new = {}
         st.session_state.idx = 0
 
@@ -153,7 +151,7 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
-    # ========== DRVETO ==========
+    # ==== TIPO A ====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
         fam_candidates = [c for c in df.columns if "famiglia" in c.lower()]
@@ -164,13 +162,10 @@ def main():
 
         df[qta] = coerce_numeric(df[qta])
         df[netto] = coerce_numeric(df[netto])
+        df["_clean"] = df[desc].map(norm)
+        df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem|new), axis=1)
 
-        df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem | new), axis=1)
-
-        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
-        base = desc
-
-    # ========== VETSGO ==========
+    # ==== TIPO B ====
     else:
         prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ","").lower())
         imp = next(c for c in df.columns if "totaleimpon" in c.lower())
@@ -180,37 +175,23 @@ def main():
         df[imp] = coerce_numeric(df[imp])
         df[iva] = coerce_numeric(df[iva])
         df[tot] = coerce_numeric(df[tot])
-
-        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, None, mem | new))
-
-        # normalizzazione categorie
-        map_reduce = {
-            r".*dermat.*": "Visite ambulatoriali",
-            r".*citolog.*": "Altri esami diagnostici",
-            r".*flebo.*": "Visite ambulatoriali",
-            r".*eutanas.*": "Interventi chirurgici",
-        }
-        df["CategoriaFinale"] = df["CategoriaFinale"].replace(map_reduce, regex=True)
-
-        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
-        base = prest
+        df["_clean"] = df[prest].map(norm)
+        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem|new))
 
     # === APPRENDIMENTO ===
-    terms = sorted({norm(v) for v in df[base].dropna().unique()}, key=str.casefold)
-    pending = [t for t in terms if not any(norm(k) in t for k in (mem | new).keys())]
+    learned = {norm(k) for k in (mem|new).keys()}
+    pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
         idx = st.session_state.idx
-
         if idx >= len(pending): idx = 0
-        term = pending[idx]
 
-        st.warning(f"🧠 Da classificare: {idx+1}/{len(pending)} → “{term}”")
+        term = pending[idx]
+        st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
 
         opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
         last = st.session_state.get("last_cat", opts[0])
-        try: default_index = opts.index(last)
-        except: default_index = 0
+        default_index = opts.index(last) if last in opts else 0
 
         cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
@@ -223,8 +204,8 @@ def main():
                 mem.update(new)
                 st.session_state.mem = mem
                 st.session_state.new = {}
-                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, st.session_state.mem)
-                st.success("🎉 Tutto salvato sul cloud!")
+                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
+                st.success("🎉 Tutti i termini classificati e salvati sul cloud!")
                 st.session_state.idx = 0
                 st.stop()
 
@@ -234,26 +215,30 @@ def main():
         st.stop()
 
     # === REPORT ===
+    df = df.drop(columns=["_clean"], errors="ignore")
+
     if mode == "A":
-        qta = qta
-        netto = netto
         studio = df.groupby("CategoriaFinale").agg({qta:"sum", netto:"sum"}).reset_index()
         studio.columns = ["Categoria","Qtà","Netto"]
         studio["% Qtà"] = round_pct(studio["Qtà"])
         studio["% Netto"] = round_pct(studio["Netto"])
         studio.loc[len(studio)] = ["Totale", studio["Qtà"].sum(), studio["Netto"].sum(), 100, 100]
-        ycol = "Netto"
-        title = "Somma Netto per Categoria"
+        ycol, title = "Netto", "Somma Netto per Categoria"
 
     else:
         studio = df.groupby("CategoriaFinale").agg({imp:"sum", iva:"sum", tot:"sum"}).reset_index()
         studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA","Totale"]
         studio["% Totale"] = round_pct(studio["Totale"])
-        studio.loc[len(studio)] = ["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), studio["Totale"].sum(), 100]
-        studio["Categoria"] = pd.Categorical(studio["Categoria"], categories=ORDER_B + ["Totale"], ordered=True)
+        studio.loc[len(studio)] = [
+            "Totale",
+            studio["TotaleImponibile"].sum(),
+            studio["TotaleConIVA"].sum(),
+            studio["Totale"].sum(),
+            100
+        ]
+        studio["Categoria"] = pd.Categorical(studio["Categoria"], categories=ORDER_B, ordered=True)
         studio = studio.sort_values("Categoria")
-        ycol = "Totale"
-        title = "Somma Totale per Categoria"
+        ycol, title = "Totale", "Somma Totale per Categoria"
 
     st.dataframe(studio)
 
@@ -261,22 +246,14 @@ def main():
     ax.bar(studio["Categoria"], studio[ycol], color="steelblue")
     ax.set_title(title)
     plt.xticks(rotation=45, ha="right")
-    buf = BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
+    buf = BytesIO(); plt.tight_layout(); plt.savefig(buf, format="png"); buf.seek(0)
     st.image(buf)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Report"
-    for r in dataframe_to_rows(studio, index=False, header=True):
-        ws.append(r)
+    wb = Workbook(); ws = wb.active; ws.title = "Report"
+    for r in dataframe_to_rows(studio, index=False, header=True): ws.append(r)
     ws.add_image(XLImage(buf), f"A{len(studio)+3}")
     out = BytesIO(); wb.save(out)
-
-    st.download_button("⬇️ Scarica Report Excel", data=out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
+    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
 
 if __name__ == "__main__":
     main()
-
