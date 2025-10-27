@@ -13,9 +13,8 @@ import matplotlib.pyplot as plt
 # === CONFIG ===
 st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
 
-GITHUB_FILE_A = "dizionario_drveto.json"
-GITHUB_FILE_B = "dizionario_vetsgo.json"
-
+GITHUB_FILE_A = "dizionario_drveto.json"   # dizionario DrVeto
+GITHUB_FILE_B = "dizionario_vetsgo.json"   # dizionario VetsGo
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -27,12 +26,9 @@ def any_kw_in(t, keys):
     return any(k in t for k in keys)
 
 def coerce_numeric(s: pd.Series) -> pd.Series:
-    s = (
-        s.astype(str)
-         .str.replace(r"[€\s]", "", regex=True)
+    s = (s.astype(str).str.replace(r"[€\s]", "", regex=True)
          .str.replace(".", "", regex=False)
-         .str.replace(",", ".", regex=False)
-    )
+         .str.replace(",", ".", regex=False))
     return pd.to_numeric(s, errors="coerce").fillna(0)
 
 def round_pct(values: pd.Series) -> pd.Series:
@@ -51,7 +47,7 @@ def load_excel(file):
     return pd.read_excel(file)
 
 # === GITHUB ===
-def github_load_json():
+def github_load_json(file_name):
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
@@ -62,14 +58,14 @@ def github_load_json():
         pass
     return {}
 
-def github_save_json(data: dict):
+def github_save_json(file_name, data):
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
         get = requests.get(url, headers=headers, timeout=12)
         sha = get.json().get("sha") if get.status_code == 200 else None
         encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
-        payload = {"message": "Update dizionario", "content": encoded, "branch": "main"}
+        payload = {"message": "Update ISA dictionary", "content": encoded, "branch": "main"}
         if sha:
             payload["sha"] = sha
         requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
@@ -90,13 +86,22 @@ RULES_A = {
 }
 
 RULES_B = {
-    "Visite domiciliari o presso allevamenti": ["visite domiciliari","allevamenti","domicilio"],
-    "Visite ambulatoriali": ["terapia","trattamenti","vaccinazioni","ambulatorio","manualità","pet corner","visite","ricette","medicazione","microchip","controllo"],
-    "Esami diagnostici per immagine": ["radiologia","eco","ecografia","tac","rx","raggi"],
-    "Altri esami diagnostici": ["laboratorio","emocromo","prelievo"],
-    "Interventi chirurgici": ["chirurg","castraz","ovariect","detartrasi","estraz","eutanasia","anestesia"],
+    "Visite domiciliari o presso allevamenti": ["domicilio","allevamenti"],
+    "Visite ambulatoriali": ["visita","controllo","consulto","terapia","trattam","manual","microchip","vacc","medicazione"],
+    "Esami diagnostici per immagine": ["rx","eco","ecogra","tac","raggi","radi"],
+    "Altri esami diagnostici": ["analisi","emocromo","prelievo","laboratorio"],
+    "Interventi chirurgici": ["chirurg","castraz","ovariect","detartrasi","estraz","anest","endo"],
     "Altre attività": ["acconto"]
 }
+
+ORDER_B = [
+    "Visite domiciliari o presso allevamenti",
+    "Visite ambulatoriali",
+    "Esami diagnostici per immagine",
+    "Altri esami diagnostici",
+    "Interventi chirurgici",
+    "Altre attività"
+]
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam, mem):
@@ -104,25 +109,20 @@ def classify_A(desc, fam, mem):
     if fam_s and fam_s not in {"privato","professionista","nan","none",""}:
         return fam_s.upper()
     d = norm(desc)
-    for k, v in mem.items():
-        if norm(k) in d:
-            return v
-    for cat, keys in RULES_A.items():
-        if any_kw_in(d, keys):
-            return cat
+    for k,v in mem.items():
+        if norm(k) in d: return v
+    for cat,keys in RULES_A.items():
+        if any_kw_in(d, keys): return cat
     return "ALTRE PRESTAZIONI"
 
 def classify_B(prest, cat, mem):
-    cat_s = norm(cat)
-    if cat_s and cat_s not in {"nan","none",""}:
-        return cat_s.upper()
     d = norm(prest)
-    for k, v in mem.items():
+    for k,v in mem.items():
         if norm(k) in d:
             return v
-    for cat, keys in RULES_B.items():
+    for category, keys in RULES_B.items():
         if any_kw_in(d, keys):
-            return cat
+            return category
     return "Altre attività"
 
 # === MAIN ===
@@ -134,108 +134,87 @@ def main():
         st.stop()
 
     if "df" not in st.session_state:
-        st.session_state.df = load_excel(file)
-        st.session_state.mem = github_load_json()
+        df = load_excel(file)
+        st.session_state.df = df
+
+        mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
+        st.session_state.mode = mode
+
+        if mode == "A":
+            st.session_state.mem = github_load_json(GITHUB_FILE_A)
+        else:
+            st.session_state.mem = github_load_json(GITHUB_FILE_B)
+
         st.session_state.new = {}
         st.session_state.idx = 0
 
     df = st.session_state.df.copy()
     mem = st.session_state.mem
     new = st.session_state.new
+    mode = st.session_state.mode
 
-    cols = [c.lower() for c in df.columns]
-    mode = "B" if any("prestazioneprodotto" in c for c in cols) else "A"
-
-    # === DRVETO (Tipo A) ===
+    # ========== DRVETO ==========
     if mode == "A":
-        st.session_state.mem = github_load_json(GITHUB_FILE_A)
-    else:
-        st.session_state.mem = github_load_json(GITHUB_FILE_B)
         desc = next(c for c in df.columns if "descrizione" in c.lower())
-        # individua la "famiglia prestazione / categoria prodotto", NON "famiglia cliente"
         fam_candidates = [c for c in df.columns if "famiglia" in c.lower()]
         fam_pref = [c for c in fam_candidates if ("prestazione" in c.lower()) or ("categoria" in c.lower()) or ("/" in c)]
         fam = fam_pref[0] if fam_pref else None
-
-        q_candidates = [c for c in df.columns if "quant" in c.lower()]
-        qta = q_candidates[0] if q_candidates else next(c for c in df.columns if c.strip() == "%")
+        qta = next(c for c in df.columns if "quant" in c.lower() or c.strip()=="%")
         netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
 
         df[qta] = coerce_numeric(df[qta])
         df[netto] = coerce_numeric(df[netto])
 
-        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, None, mem | new))
+        df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem | new), axis=1)
 
-        # mappa eventuali categorie sbagliate, doppie o da unificare:
-        map_reduce = {
-            "visita": "Visite ambulatoriali",
-            "controllo": "Visite ambulatoriali",
-            "dermatologico": "Visite ambulatoriali",
-            "esame": "Altri esami diagnostici",
-            "laboratorio": "Altri esami diagnostici",
-            "emocromo": "Altri esami diagnostici",
-            "flebo": "Visite ambulatoriali",
-            "terapia": "Visite ambulatoriali",
-            "endoscopia": "Interventi chirurgici",
-            "anestesia": "Interventi chirurgici",
-            "otoematoma": "Interventi chirurgici",
-            "acconto": "Altre attività",
-        }
-
-        df["CategoriaFinale"] = df["CategoriaFinale"].replace(map_reduce, regex=True)
-        # rimuovi eventuali residui cliente
         df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
-
         base = desc
 
-    # === VETSGO (Tipo B) ===
+    # ========== VETSGO ==========
     else:
-        prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ", "").lower())
-        cat_col = next((c for c in df.columns if "categoria" in c.lower()), None)
-
+        prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ","").lower())
         imp = next(c for c in df.columns if "totaleimpon" in c.lower())
-        iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower())
-        tot_exact = [c for c in df.columns if c.lower().strip() == "totale"]
-        tot = tot_exact[0] if tot_exact else next(c for c in df.columns if "totale" in c.lower())
+        iva = next(c for c in df.columns if "totaleconiva" in c.replace(" ","").lower())
+        tot = next(c for c in df.columns if c.lower().strip()=="totale" or "totale" in c.lower())
 
         df[imp] = coerce_numeric(df[imp])
         df[iva] = coerce_numeric(df[iva])
         df[tot] = coerce_numeric(df[tot])
 
-        df["CategoriaFinale"] = df.apply(
-            lambda r: classify_B(r[prest], r[cat_col] if cat_col else None, mem | new),
-            axis=1
-        )
-        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
+        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, None, mem | new))
 
+        # normalizzazione categorie
+        map_reduce = {
+            r".*dermat.*": "Visite ambulatoriali",
+            r".*citolog.*": "Altri esami diagnostici",
+            r".*flebo.*": "Visite ambulatoriali",
+            r".*eutanas.*": "Interventi chirurgici",
+        }
+        df["CategoriaFinale"] = df["CategoriaFinale"].replace(map_reduce, regex=True)
+
+        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
         base = prest
 
-    # === APPRENDIMENTO (robusto, no out-of-range, salvataggio auto GitHub) ===
-    terms = sorted({str(v).strip() for v in df[base].dropna().unique()}, key=str.casefold)
-    pending = [t for t in terms if not any(norm(k) in norm(t) for k in (mem | new).keys())]
+    # === APPRENDIMENTO ===
+    terms = sorted({norm(v) for v in df[base].dropna().unique()}, key=str.casefold)
+    pending = [t for t in terms if not any(norm(k) in t for k in (mem | new).keys())]
 
-    if not pending:
-        st.session_state.idx = 0
-    else:
-        idx = st.session_state.get("idx", 0)
-        if idx >= len(pending) or idx < 0:
-            idx = 0
-            st.session_state.idx = 0
+    if pending:
+        idx = st.session_state.idx
 
+        if idx >= len(pending): idx = 0
         term = pending[idx]
+
         st.warning(f"🧠 Da classificare: {idx+1}/{len(pending)} → “{term}”")
 
-        opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
+        opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
         last = st.session_state.get("last_cat", opts[0])
+        try: default_index = opts.index(last)
+        except: default_index = 0
 
-        try:
-            default_index = opts.index(last)
-        except ValueError:
-            default_index = 0
+        cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
-        cat_sel = st.selectbox("Categoria:", opts, index=default_index, key=f"sel_{idx}")
-
-        if st.button("✅ Salva e prossimo", key=f"save_{idx}"):
+        if st.button("✅ Salva e prossimo"):
             new[term] = cat_sel
             st.session_state.new = new
             st.session_state.last_cat = cat_sel
@@ -244,8 +223,8 @@ def main():
                 mem.update(new)
                 st.session_state.mem = mem
                 st.session_state.new = {}
-                github_save_json(mem)
-                st.success("🎉 Tutti i termini classificati e salvati sul cloud!")
+                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
+                st.success("🎉 Tutto salvato sul cloud!")
                 st.session_state.idx = 0
                 st.stop()
 
@@ -256,36 +235,30 @@ def main():
 
     # === REPORT ===
     if mode == "A":
-        studio = df.groupby("CategoriaFinale", dropna=False).agg({qta: "sum", netto: "sum"}).reset_index()
-        studio = studio.rename(columns={"CategoriaFinale": "Categoria", qta: "Qtà", netto: "Netto"})
+        qta = qta
+        netto = netto
+        studio = df.groupby("CategoriaFinale").agg({qta:"sum", netto:"sum"}).reset_index()
+        studio.columns = ["Categoria","Qtà","Netto"]
         studio["% Qtà"] = round_pct(studio["Qtà"])
         studio["% Netto"] = round_pct(studio["Netto"])
         studio.loc[len(studio)] = ["Totale", studio["Qtà"].sum(), studio["Netto"].sum(), 100, 100]
         ycol = "Netto"
         title = "Somma Netto per Categoria"
+
     else:
-        studio = df.groupby("CategoriaFinale", dropna=False).agg({imp: "sum", iva: "sum", tot: "sum"}).reset_index()
-        studio = studio.rename(columns={
-            "CategoriaFinale": "Categoria",
-            imp: "TotaleImponibile",
-            iva: "TotaleConIVA",
-            tot: "Totale"
-        })
+        studio = df.groupby("CategoriaFinale").agg({imp:"sum", iva:"sum", tot:"sum"}).reset_index()
+        studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA","Totale"]
         studio["% Totale"] = round_pct(studio["Totale"])
-        studio.loc[len(studio)] = [
-            "Totale",
-            studio["TotaleImponibile"].sum(),
-            studio["TotaleConIVA"].sum(),
-            studio["Totale"].sum(),
-            100
-        ]
+        studio.loc[len(studio)] = ["Totale", studio["TotaleImponibile"].sum(), studio["TotaleConIVA"].sum(), studio["Totale"].sum(), 100]
+        studio["Categoria"] = pd.Categorical(studio["Categoria"], categories=ORDER_B + ["Totale"], ordered=True)
+        studio = studio.sort_values("Categoria")
         ycol = "Totale"
         title = "Somma Totale per Categoria"
 
     st.dataframe(studio)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar(studio["Categoria"], studio[ycol])
+    fig, ax = plt.subplots(figsize=(8,5))
+    ax.bar(studio["Categoria"], studio[ycol], color="steelblue")
     ax.set_title(title)
     plt.xticks(rotation=45, ha="right")
     buf = BytesIO()
@@ -297,30 +270,12 @@ def main():
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
-    start_row, start_col = 3, 2
-    total_fill = PatternFill(start_color="FFF4B084", end_color="FFF4B084", fill_type="solid")
+    for r in dataframe_to_rows(studio, index=False, header=True):
+        ws.append(r)
+    ws.add_image(XLImage(buf), f"A{len(studio)+3}")
+    out = BytesIO(); wb.save(out)
 
-    # intestazioni
-    for j, h in enumerate(studio.columns, start=start_col):
-        ws.cell(row=start_row, column=j, value=h).font = Font(bold=True)
-    # dati
-    for i, row in enumerate(dataframe_to_rows(studio, index=False, header=False), start=start_row + 1):
-        for j, v in enumerate(row, start=start_col):
-            ws.cell(row=i, column=j, value=v)
-    # riga totale evidenziata
-    last = start_row + len(studio)
-    for j in range(start_col, start_col + len(studio.columns)):
-        c = ws.cell(row=last, column=j)
-        c.font = Font(bold=True)
-        c.fill = total_fill
-
-    ws.add_image(XLImage(buf), f"A{last + 3}")
-    out = BytesIO()
-    wb.save(out)
-    st.download_button("⬇️ Scarica Excel", out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
+    st.download_button("⬇️ Scarica Report Excel", data=out.getvalue(), file_name=f"StudioISA_{datetime.now().year}.xlsx")
 
 if __name__ == "__main__":
     main()
-
-
-
