@@ -510,19 +510,39 @@ def render_registro_iva():
     hdr_left, hdr_right = hdr_table.rows[0].cells
 
     # Sinistra
-    pL = hdr_left.paragraphs[0]
+    pL = cell_left.paraghaphs[0]
     pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    runL = pL.add_run(f"{struttura}\n{indirizzo}\nP.IVA {piva}")
-    runL.font.name = "Aptos Narrow"
-    runL.font.size = Pt(8)
+
+    run1 = pL.add_run(struttura + "\n")
+    run1.font.name = "Segoe UI"
+    run1.font.size = Pt(14)
+    run1.bold = False
+
+    run2 = pL.add_run(indirizzo + "\n")
+    run2.font.name = "Segoe UI"
+    run2.font.size = Pt(12)
+    run2.bold = False
+
+    run3 = pL.add_run(f"P.IVA {piva}")
+    run3.font.name = "Aptos Narrow"
+    run3._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+    run3.font.size = Pt(10)
+    run3.bold = True
 
     # Destra (ANNO, intervallo date, Pag. X di Y)
-    pR = hdr_right.paragraphs[0]
+    pR = cell_right.paragraphs[0]
     pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    runR1 = pR.add_run(f"ANNO {anno}\nEntrate dal {data_min} al {data_max}")
-    if note_header.strip():
-        runR1.add_break()
-        runR12 = pR.add_run(note_header.strip())
+
+    run4 = pR.add_run(f"ANNO {anno}\n")
+    run4.font.name = "Calibri"
+    run4.font.size = Pt(10)
+    run4.bold = False
+
+    run5 = pR.add_run(f"Entrate dal {data_min} al {data_max}")
+    run5.font.name = "Aptos Narrow"
+    run5._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+    run5.font.size = Pt(10)
+    run5.bold = True
 
     # Nuova riga con "Pag. X di Y"
     pR2 = header.add_paragraph()
@@ -628,6 +648,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
