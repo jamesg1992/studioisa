@@ -436,6 +436,11 @@ def render_registro_iva():
 
     # --- Lettura e normalizzazione ---
     df = pd.read_excel(file)
+    if "Città" in df.columns:
+        df["Città"] = df["Città"].astype(str)
+
+        df["Città"] = df["Città"].str.replace(r"\s*\(([^)]+)\)", r" - \1", regex=True)
+        df["Città"] = df["Città"].str.replace(r"\s+([A-Z]{2})$", r" - \1", regex=True)
 
     # Nomi colonne attesi dal tracciato
     expected_cols = [
@@ -648,6 +653,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
