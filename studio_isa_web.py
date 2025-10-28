@@ -80,7 +80,7 @@ def github_save_json(file_name, data):
 RULES_A = {
     "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt","urine"],
     "VISITE": ["visita","controllo","consulto","dermatologic"],
-    "TERAPIA": ["terapia","terapie"]
+    "TERAPIA": ["terapia","terapie"],
     "FAR": ["meloxidyl","konclav","enrox","profenacarp","apoquel","osurnia","cylan","mometa","aristos","cytopoint","milbemax","stomorgyl","previcox"],
     "CHIRURGIA": ["intervento","chirurg","castraz","sterilizz","ovariect","detartrasi","estraz","biopsia","orchiettomia","odontostomat"],
     "DIAGNOSTICA PER IMMAGINI": ["rx","radiograf","eco","ecografia","tac"],
@@ -346,6 +346,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
