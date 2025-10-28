@@ -430,6 +430,7 @@ def render_registro_iva():
     citta_ui = st.text_input("Città")
     provincia_ui = st.text_input("Provincia (sigla)", max_chars=2)
     piva = st.text_input("Partita IVA")
+    pagina_iniziale = st.number_input("Numero pagina iniziale", min_value=1, max_value=999, value=1)
 
     file = st.file_uploader("Carica il file Registro IVA (Excel)", type=["xlsx", "xls"])
     if not file or not struttura:
@@ -623,6 +624,12 @@ def render_registro_iva():
         r5.font.name = "Aptos Narrow"; r5._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
         r5.font.size = Pt(10); r5.bold = True
 
+        r6 = pR.add_run(f"Pag. {pagina_iniziale}")
+        r6.font.name = "Aptos Narrow"
+        r6._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+        r6.font.size = Pt(10)
+        r6.bold = False
+
         doc.add_paragraph()
 
         # Tabella
@@ -668,6 +675,7 @@ def render_registro_iva():
         doc.add_paragraph(f"Ritenuta d'acconto: {euro_it(tot_rit)} €")
         doc.add_paragraph(f"Totale complessivo: {euro_it(tot_tot)} €")
 
+        pagina_iniziale += 1
         # Esporta DOCX
         buf = BytesIO()
         doc.save(buf)
@@ -684,6 +692,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
