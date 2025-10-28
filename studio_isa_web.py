@@ -420,12 +420,6 @@ def main():
 
     # =============== REGISTRO IVA ===========
 def render_registro_iva():
-    from docx import Document
-    from docx.shared import Inches, Pt
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.section import WD_ORIENT
-    from docx.oxml.ns import qn
-
     st.header("📄 Registro IVA - Vendite")
 
     struttura = st.text_input("Nome Struttura")
@@ -437,6 +431,14 @@ def render_registro_iva():
         return
 
     df = pd.read_excel(file)
+
+    if "CAP" in df.columns:
+        df["CAP"] = (
+            df["CAP"]
+            .astype(str)
+            .str.replace(r"[^\d]", "", regex=True)
+            .str.zfill(5)
+        )
 
     # Nomi colonne attesi dal tracciato
     expected_cols = [
@@ -559,6 +561,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
