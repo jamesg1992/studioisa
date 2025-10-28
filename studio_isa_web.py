@@ -423,7 +423,7 @@ def main():
 def render_registro_iva():
     st.header("📄 Registro IVA - Vendite")
 
-    # --- Dati intestazione da UI ---
+    # --- Dati intestazione (UI) ---
     struttura = st.text_input("Nome Struttura")
     indirizzo_ui = st.text_input("Indirizzo (Via)")
     cap_ui = st.text_input("CAP")
@@ -435,10 +435,10 @@ def render_registro_iva():
     if not file or not struttura:
         return
 
-    # --- Leggi Excel ---
+    # --- Leggi Excel una volta ---
     df = pd.read_excel(file)
 
-    # --- Mappa colonne numeriche SOLO per i calcoli ---
+    # --- Mappa colonne numeriche SOLO per i calcoli (no duplicati in stampa) ---
     ren_num = {
         "Totale Netto": "tot_netto",
         "Totale ENPAV": "tot_enpav",
@@ -449,39 +449,37 @@ def render_registro_iva():
         "Totale": "totale",
     }
     df_num = df.rename(columns=ren_num).copy()
-
-    # Converte in numerico solo se la colonna esiste
     for c in ["tot_netto", "tot_enpav", "tot_imponibile", "tot_iva", "tot_sconto", "tot_rit", "totale"]:
         if c in df_num.columns:
             df_num[c] = coerce_numeric(df_num[c])
 
-    # --- DataFrame per la STAMPA (solo colonne "ufficiali") ---
-    # Rimuovi eventuali duplicati di intestazioni per sicurezza
-    df = df.loc[:, ~df.columns.duplicated()].copy()
-
+    # --- DataFrame per la STAMPA (solo colonne ufficiali, ordine fisso) ---
+    df = df.loc[:, ~df.columns.duplicated()].copy()  # evita duplicati
     expected_cols = [
         "Data", "Numero", "Cliente", "P.Iva", "Codice Fiscale",
         "Indirizzo", "CAP", "Città",
         "Totale Netto", "Totale ENPAV", "Totale Imponibile",
-        "Totale IVA", "Totale Sconto", "Rit. d'acconto", "Totale"
+        "Totale IVA", "Totale Sconto", "Rit. d'acconto", "Totale",
     ]
     cols_presenti = [c for c in expected_cols if c in df.columns]
+    if not cols_presenti:
+        st.error("Il file non contiene le colonne richieste per il Registro IVA.")
+        return
     df_display = df[cols_presenti].copy()
 
-    # --- Pulisci CAP per stampa (solo alfanumerico) ---
+    # CAP ripulito (solo alfanumerico)
     if "CAP" in df_display.columns:
         df_display["CAP"] = (
-            df_display["CAP"]
-            .astype(str)
+            df_display["CAP"].astype(str)
             .str.replace(r"[^\dA-Za-z]", "", regex=True)
         )
 
-    # --- Determina intervallo date e anno ---
+    # Intervallo date + anno
     if "Data" in df_display.columns:
-        data_series = pd.to_datetime(df_display["Data"], dayfirst=True, errors="coerce")
-        data_min = data_series.min()
-        data_max = data_series.max()
-        anno = int(data_series.dt.year.dropna().mode()[0]) if data_series.notna().any() else datetime.now().year
+        ds = pd.to_datetime(df_display["Data"], dayfirst=True, errors="coerce")
+        data_min = ds.min()
+        data_max = ds.max()
+        anno = int(ds.dt.year.dropna().mode()[0]) if ds.notna().any() else datetime.now().year
         data_min_str = data_min.strftime("%d/%m/%Y") if pd.notna(data_min) else "-"
         data_max_str = data_max.strftime("%d/%m/%Y") if pd.notna(data_max) else "-"
     else:
@@ -489,141 +487,154 @@ def render_registro_iva():
         data_min_str = "-"
         data_max_str = "-"
 
-    # --- Componi indirizzo stampabile (se l'utente ha messo i campi manuali, hanno priorità) ---
-    # Prova a dedurre indirizzo/CAP/Città da file, altrimenti usa quelli UI.
-    indirizzo_file = None
-    cap_file = None
-    citta_file = None
-
-    if "Indirizzo" in df_display.columns:
-        indirizzo_file = str(df_display["Indirizzo"].iloc[0]) if not df_display.empty else None
-    if "CAP" in df_display.columns:
-        cap_file = str(df_display["CAP"].iloc[0]) if not df_display.empty else None
-    if "Città" in df_display.columns:
-        citta_file = str(df_display["Città"].iloc[0]) if not df_display.empty else None
+    # Componi indirizzo stampabile (UI > file)
+    indirizzo_file = str(df_display["Indirizzo"].iloc[0]) if "Indirizzo" in df_display.columns and not df_display.empty else ""
+    cap_file = str(df_display["CAP"].iloc[0]) if "CAP" in df_display.columns and not df_display.empty else ""
+    citta_file = str(df_display["Città"].iloc[0]) if "Città" in df_display.columns and not df_display.empty else ""
 
     indirizzo = indirizzo_ui or indirizzo_file or ""
     cap_print = cap_ui or cap_file or ""
-    # Città + (Provincia)
     citta_print = citta_ui or citta_file or ""
     if provincia_ui:
         citta_print = f"{citta_print} ({provincia_ui.upper()})".strip()
 
-    # --- Crea documento Word ---
-    doc = Document()
-
-    # Layout orizzontale, margini stretti
-    section = doc.sections[0]
-    section.orientation = WD_ORIENT.LANDSCAPE
-    section.page_width = Inches(11.69)
-    section.page_height = Inches(8.27)
-    section.left_margin = Inches(0.4)
-    section.right_margin = Inches(0.4)
-    section.top_margin = Inches(0.5)
-    section.bottom_margin = Inches(0.5)
-
-    # Stile base documento
-    style = doc.styles['Normal']
-    style.font.name = "Aptos Narrow"
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-    style.font.size = Pt(8)
-
-    # --- Header: tabella 2 colonne (sx/dx) ---
-    header = section.header
-    hdr_table = header.add_table(rows=1, cols=2, width=Inches(11.4))  # width richiesto in header
-    hdr_table.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    hdr_left, hdr_right = hdr_table.rows[0].cells
-
-    # Sinistra (Nome struttura, indirizzo, P.IVA)
-    pL = hdr_left.paragraphs[0]
-    pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    run1 = pL.add_run(struttura + "\n")
-    run1.font.name = "Segoe UI"
-    run1.font.size = Pt(14)
-    run1.bold = False
-
-    left_line2 = " ".join(x for x in [indirizzo, cap_print, citta_print] if x)
-    run2 = pL.add_run(left_line2 + "\n")
-    run2.font.name = "Segoe UI"
-    run2.font.size = Pt(12)
-    run2.bold = False
-
-    run3 = pL.add_run(f"P.IVA {piva}")
-    run3.font.name = "Aptos Narrow"
-    run3._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-    run3.font.size = Pt(10)
-    run3.bold = True
-
-    # Destra (ANNO, intervallo date)
-    pR = hdr_right.paragraphs[0]
-    pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-    run4 = pR.add_run(f"ANNO {anno}\n")
-    run4.font.name = "Calibri"
-    run4.font.size = Pt(10)
-    run4.bold = False
-
-    run5 = pR.add_run(f"Entrate dal {data_min_str} al {data_max_str}")
-    run5.font.name = "Aptos Narrow"
-    run5._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-    run5.font.size = Pt(10)
-    run5.bold = True
-
-    doc.add_paragraph()  # spazio dopo header
-
-    # --- Tabella principale (usa SOLO df_display: colonne originali, incl. "Totale Imponibile") ---
-    if df_display.empty:
-        st.error("Il file non contiene le colonne richieste per il registro IVA.")
+    # --- Pulsante esplicito per generare il DOCX (evita generazioni a ogni rerun) ---
+    if not st.button("🧾 Genera Registro IVA (DOCX)"):
+        # Mostra anteprima tabella di stampa
+        st.dataframe(df_display, use_container_width=True)
         return
 
-    table = doc.add_table(rows=df_display.shape[0] + 1, cols=df_display.shape[1])
-    table.style = "Table Grid"
+    with st.spinner("Generazione del Registro IVA in corso..."):
+        # Prepara versioni stringa dei dati per velocizzare scrittura cella->testo
+        df_display_str = df_display.fillna("").astype(str)
 
-    # Header riga 1
-    hdr_row = table.rows[0]
-    for j, col in enumerate(df_display.columns):
-        cell = hdr_row.cells[j]
-        p = cell.paragraphs[0]
-        run = p.add_run(str(col))
-        run.bold = True
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.section import WD_ORIENT
+        from docx.oxml.ns import qn
 
-    # Righe dati
-    for i in range(df_display.shape[0]):
-        for j in range(df_display.shape[1]):
-            table.cell(i + 1, j).text = "" if pd.isna(df_display.iloc[i, j]) else str(df_display.iloc[i, j])
+        doc = Document()
 
-    doc.add_paragraph()  # spazio prima dei totali
+        # Layout orizzontale + margini compatti
+        section = doc.sections[0]
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Inches(11.69)
+        section.page_height = Inches(8.27)
+        section.left_margin = Inches(0.4)
+        section.right_margin = Inches(0.4)
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
 
-    # --- Totali (da df_num numerico) ---
-    tot_netto = df_num.get("tot_netto", pd.Series([], dtype=float)).sum()
-    tot_enpav = df_num.get("tot_enpav", pd.Series([], dtype=float)).sum()
-    tot_imp   = df_num.get("tot_imponibile", pd.Series([], dtype=float)).sum()
-    tot_iva   = df_num.get("tot_iva", pd.Series([], dtype=float)).sum()
-    tot_sco   = df_num.get("tot_sconto", pd.Series([], dtype=float)).sum()
-    tot_rit   = df_num.get("tot_rit", pd.Series([], dtype=float)).sum()
-    tot_tot   = df_num.get("totale", pd.Series([], dtype=float)).sum()
+        # Stile base
+        style = doc.styles["Normal"]
+        style.font.name = "Aptos Narrow"
+        style._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+        style.font.size = Pt(8)
 
-    # Totali finali (paragrafi semplici)
-    doc.add_paragraph("Totali Finali:\n")
-    doc.add_paragraph(f"Totale Netto: {tot_netto:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Totale ENPAV: {tot_enpav:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Totale Imponibile: {tot_imp:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Totale IVA: {tot_iva:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Totale Sconto: {tot_sco:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Ritenuta d'acconto: {tot_rit:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    doc.add_paragraph(f"Totale complessivo: {tot_tot:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+        # --- Header (tabella 2 colonne) ---
+        header = section.header
+        hdr_table = header.add_table(rows=1, cols=2)  # in header non serve specificare width
+        hdr_left, hdr_right = hdr_table.rows[0].cells
 
-    # --- Esporta Word ---
-    buf = BytesIO()
-    doc.save(buf)
-    buf.seek(0)
+        # Sinistra
+        pL = hdr_left.paragraphs[0]
+        pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    st.download_button("⬇️ Scarica Registro IVA (Word)", data=buf.getvalue(), file_name=f"Registro_IVA_{anno}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        run1 = pL.add_run(struttura + "\n")
+        run1.font.name = "Segoe UI"
+        run1.font.size = Pt(14)
+        run1.bold = False
+
+        left_line2 = " ".join(x for x in [indirizzo, cap_print, citta_print] if x)
+        run2 = pL.add_run(left_line2 + "\n")
+        run2.font.name = "Segoe UI"
+        run2.font.size = Pt(12)
+        run2.bold = False
+
+        run3 = pL.add_run(f"P.IVA {piva}")
+        run3.font.name = "Aptos Narrow"
+        run3._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+        run3.font.size = Pt(10)
+        run3.bold = True
+
+        # Destra
+        pR = hdr_right.paragraphs[0]
+        pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+        run4 = pR.add_run(f"ANNO {anno}\n")
+        run4.font.name = "Calibri"
+        run4.font.size = Pt(10)
+        run4.bold = False
+
+        run5 = pR.add_run(f"Entrate dal {data_min_str} al {data_max_str}")
+        run5.font.name = "Aptos Narrow"
+        run5._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+        run5.font.size = Pt(10)
+        run5.bold = True
+
+        doc.add_paragraph()  # spazio
+
+        # --- Tabella principale (da df_display_str) ---
+        rows, cols = df_display_str.shape
+        table = doc.add_table(rows=rows + 1, cols=cols)
+        table.style = "Table Grid"
+
+        # Header
+        for j, col_name in enumerate(df_display_str.columns):
+            cell = table.cell(0, j)
+            p = cell.paragraphs[0]
+            run = p.add_run(col_name)
+            run.bold = True
+
+        # Dati
+        for i in range(rows):
+            row_vals = df_display_str.iloc[i]
+            row_cells = table.rows[i + 1].cells
+            for j in range(cols):
+                row_cells[j].text = row_vals.iloc[j]
+
+        doc.add_paragraph()
+
+        # --- Totali finali (da df_num) ---
+        tot_netto = df_num.get("tot_netto", pd.Series([], dtype=float)).sum()
+        tot_enpav = df_num.get("tot_enpav", pd.Series([], dtype=float)).sum()
+        tot_imp   = df_num.get("tot_imponibile", pd.Series([], dtype=float)).sum()
+        tot_iva   = df_num.get("tot_iva", pd.Series([], dtype=float)).sum()
+        tot_sco   = df_num.get("tot_sconto", pd.Series([], dtype=float)).sum()
+        tot_rit   = df_num.get("tot_rit", pd.Series([], dtype=float)).sum()
+        tot_tot   = df_num.get("totale", pd.Series([], dtype=float)).sum()
+
+        def euro_it(v: float) -> str:
+            s = f"{v:,.2f}"
+            return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+        doc.add_paragraph("Totali Finali:\n")
+        doc.add_paragraph(f"Totale Netto: {euro_it(tot_netto)} €")
+        doc.add_paragraph(f"Totale ENPAV: {euro_it(tot_enpav)} €")
+        doc.add_paragraph(f"Totale Imponibile: {euro_it(tot_imp)} €")
+        doc.add_paragraph(f"Totale IVA: {euro_it(tot_iva)} €")
+        doc.add_paragraph(f"Totale Sconto: {euro_it(tot_sco)} €")
+        doc.add_paragraph(f"Ritenuta d'acconto: {euro_it(tot_rit)} €")
+        doc.add_paragraph(f"Totale complessivo: {euro_it(tot_tot)} €")
+
+        # --- Esporta DOCX ---
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+    st.success("✅ Registro IVA generato.")
+    st.download_button(
+        "⬇️ Scarica Registro IVA (Word)",
+        data=buf.getvalue(),
+        file_name=f"Registro_IVA_{anno}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
