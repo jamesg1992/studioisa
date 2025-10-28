@@ -505,9 +505,8 @@ def render_registro_iva():
 
     # --- Header: tabella 2 colonne (sx/dx) ---
     header = section.header
-    hdr_table = header.add_table(rows=1, cols=2)
-    hdr_table.autofit = True
-    hdr_table.allow_autofit = True
+    hdr_table = header.add_table(rows=1, cols=2, width=Inches(11.4))
+    hdr_table.autofit = False
     hdr_left, hdr_right = hdr_table.rows[0].cells
 
     # Sinistra
@@ -629,6 +628,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
