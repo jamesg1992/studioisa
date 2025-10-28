@@ -523,16 +523,36 @@ def render_registro_iva():
     run5.font.size = Pt(10)
     run5.bold = True
 
-    # --- TABELLA REGISTRO IVA ---
-    table = doc.add_table(rows=len(df)+1, cols=len(df.columns))
+    # --- Tabella Registro ---
+    table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = "Table Grid"
 
+    # Header
+    hdr_cells = table.rows[0].cells
     for j, col in enumerate(df.columns):
-        table.cell(0, j).text = col
+        p = hdr_cells[j].paragraphs[0]
+        run = p.add_run(col)
+        run.font.size = Pt(8)
+        run.font.name = "Aptos Narrow"
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    for i in range(len(df)):
-        for j, col in enumerate(df.columns):
-            table.cell(i+1, j).text = str(df.iloc[i][col])
+    # Data rows (FAST append)
+    for row in df.itertuples(index=False):
+        row_cells = table.add_row().cells
+        for j, value in enumerate(row):
+            p = row_cells[j].paragraphs[0]
+            run = p.add_run(str(value))
+            run.font.size = Pt(8)
+            run.font.name = "Aptos Narrow"
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Disattiva auto-fit per non avere lag di ridimensionamento
+    for col in table.columns:
+        for cell in col.cells:
+            tc = cell._element.tcPr
+            tc.append(docx.oxml.parse_xml(r'<w:tcW w:w="1200" w:type="dxa"/>'))
 
     # --- TOTALI FINALI ---
     doc.add_page_break()
@@ -561,6 +581,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
