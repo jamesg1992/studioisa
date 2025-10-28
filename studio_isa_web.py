@@ -552,7 +552,10 @@ def render_registro_iva():
     for col in table.columns:
         for cell in col.cells:
             tc = cell._element.tcPr
-            tc.append(docx.oxml.parse_xml(r'<w:tcW w:w="1200" w:type="dxa"/>'))
+            w = OxmlElement('w:tcW')
+            w.set(qn('w:w'), '1200')
+            w.set(qn('w:type'), 'dxa')
+            tc.append(w)
 
     # --- TOTALI FINALI ---
     doc.add_page_break()
@@ -581,6 +584,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
