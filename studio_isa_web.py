@@ -17,6 +17,7 @@ from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 
 # =============== CONFIG =================
@@ -584,6 +585,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
