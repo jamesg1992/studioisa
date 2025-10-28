@@ -425,7 +425,7 @@ def render_registro_iva():
 
     # --- Dati intestazione (UI) ---
     struttura = st.text_input("Nome Struttura")
-    indirizzo_ui = st.text_input("Indirizzo (Via)")
+    via_ui = st.text_input("Via")
     cap_ui = st.text_input("CAP")
     citta_ui = st.text_input("Città")
     provincia_ui = st.text_input("Provincia (sigla)", max_chars=2)
@@ -435,10 +435,18 @@ def render_registro_iva():
     if not file or not struttura:
         return
 
-    # --- Leggi Excel una volta ---
-    df = pd.read_excel(file)
+    # --- Leggi Excel ---
+    df_raw = pd.read_excel(file)
 
-    # --- Mappa colonne numeriche SOLO per i calcoli (no duplicati in stampa) ---
+    # --- Normalizza i nomi colonna (togli spazi doppi / NBSP / case-insensitive) ---
+    def norm_col(c: str) -> str:
+        c = str(c).replace("\u00A0", " ")        # NBSP -> spazio
+        c = re.sub(r"\s+", " ", c).strip()       # spazi multipli
+        return c
+
+    df_raw.columns = [norm_col(c) for c in df_raw.columns]
+
+    # --- Mappa esatta delle colonne ufficiali -> alias interni numerici per i totali ---
     ren_num = {
         "Totale Netto": "tot_netto",
         "Totale ENPAV": "tot_enpav",
@@ -448,33 +456,36 @@ def render_registro_iva():
         "Rit. d'acconto": "tot_rit",
         "Totale": "totale",
     }
-    df_num = df.rename(columns=ren_num).copy()
-    for c in ["tot_netto", "tot_enpav", "tot_imponibile", "tot_iva", "tot_sconto", "tot_rit", "totale"]:
+
+    # Crea una vista numerica per i soli totali (senza duplicare sulle colonne di stampa)
+    df_num = df_raw.rename(columns=ren_num).copy()
+    for c in ren_num.values():
         if c in df_num.columns:
             df_num[c] = coerce_numeric(df_num[c])
 
-    # --- DataFrame per la STAMPA (solo colonne ufficiali, ordine fisso) ---
-    df = df.loc[:, ~df.columns.duplicated()].copy()  # evita duplicati
+    # --- Colonne da stampare, ordine fisso (incluso "Totale Imponibile") ---
     expected_cols = [
         "Data", "Numero", "Cliente", "P.Iva", "Codice Fiscale",
         "Indirizzo", "CAP", "Città",
         "Totale Netto", "Totale ENPAV", "Totale Imponibile",
         "Totale IVA", "Totale Sconto", "Rit. d'acconto", "Totale",
     ]
-    cols_presenti = [c for c in expected_cols if c in df.columns]
+    cols_presenti = [c for c in expected_cols if c in df_raw.columns]
     if not cols_presenti:
-        st.error("Il file non contiene le colonne richieste per il Registro IVA.")
+        st.error("❌ Il file non contiene le colonne richieste per il Registro IVA.")
         return
-    df_display = df[cols_presenti].copy()
 
-    # CAP ripulito (solo alfanumerico)
+    # Subset pulito per stampa (nessuna duplicazione)
+    df_display = df_raw.loc[:, cols_presenti].copy()
+
+    # CAP ripulito (evita formati tipo "40.033,00")
     if "CAP" in df_display.columns:
         df_display["CAP"] = (
             df_display["CAP"].astype(str)
             .str.replace(r"[^\dA-Za-z]", "", regex=True)
         )
 
-    # Intervallo date + anno
+    # Intervallo date + anno (tollerante)
     if "Data" in df_display.columns:
         ds = pd.to_datetime(df_display["Data"], dayfirst=True, errors="coerce")
         data_min = ds.min()
@@ -487,25 +498,25 @@ def render_registro_iva():
         data_min_str = "-"
         data_max_str = "-"
 
-    # Componi indirizzo stampabile (UI > file)
-    indirizzo_file = str(df_display["Indirizzo"].iloc[0]) if "Indirizzo" in df_display.columns and not df_display.empty else ""
+    # Recupero eventuali dati da file per l’indirizzo, se non forniti via UI
+    via_file = str(df_display["Indirizzo"].iloc[0]) if "Indirizzo" in df_display.columns and not df_display.empty else ""
     cap_file = str(df_display["CAP"].iloc[0]) if "CAP" in df_display.columns and not df_display.empty else ""
     citta_file = str(df_display["Città"].iloc[0]) if "Città" in df_display.columns and not df_display.empty else ""
 
-    indirizzo = indirizzo_ui or indirizzo_file or ""
+    via = via_ui or via_file or ""
     cap_print = cap_ui or cap_file or ""
     citta_print = citta_ui or citta_file or ""
     if provincia_ui:
+        # Aggiungi la sigla provincia tra parentesi
         citta_print = f"{citta_print} ({provincia_ui.upper()})".strip()
 
-    # --- Pulsante esplicito per generare il DOCX (evita generazioni a ogni rerun) ---
+    # Pulsante esplicito: genera DOCX una volta sola
     if not st.button("🧾 Genera Registro IVA (DOCX)"):
-        # Mostra anteprima tabella di stampa
         st.dataframe(df_display, use_container_width=True)
         return
 
     with st.spinner("Generazione del Registro IVA in corso..."):
-        # Prepara versioni stringa dei dati per velocizzare scrittura cella->testo
+        # Prepara versioni stringa (più veloce nella scrittura in tabella)
         df_display_str = df_display.fillna("").astype(str)
 
         from docx import Document
@@ -516,7 +527,7 @@ def render_registro_iva():
 
         doc = Document()
 
-        # Layout orizzontale + margini compatti
+        # Layout orizzontale + margini
         section = doc.sections[0]
         section.orientation = WD_ORIENT.LANDSCAPE
         section.page_width = Inches(11.69)
@@ -532,25 +543,23 @@ def render_registro_iva():
         style._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
         style.font.size = Pt(8)
 
-        # --- Header (tabella 2 colonne) ---
+        # === Header: tabella 2 colonne (qui PASSIAMO width per evitare l'errore) ===
         header = section.header
-        hdr_table = header.add_table(rows=1, cols=2)  # in header non serve specificare width
+        hdr_table = header.add_table(rows=1, cols=2, width=Inches(11.0))  # <-- width obbligatorio su alcune build
         hdr_left, hdr_right = hdr_table.rows[0].cells
 
-        # Sinistra
+        # Sinistra: struttura / indirizzo (Segoe UI), P.IVA (Aptos Narrow bold)
         pL = hdr_left.paragraphs[0]
         pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
         run1 = pL.add_run(struttura + "\n")
         run1.font.name = "Segoe UI"
         run1.font.size = Pt(14)
-        run1.bold = False
 
-        left_line2 = " ".join(x for x in [indirizzo, cap_print, citta_print] if x)
-        run2 = pL.add_run(left_line2 + "\n")
+        line2 = " ".join(x for x in [via, cap_print, citta_print] if x)
+        run2 = pL.add_run(line2 + "\n")
         run2.font.name = "Segoe UI"
         run2.font.size = Pt(12)
-        run2.bold = False
 
         run3 = pL.add_run(f"P.IVA {piva}")
         run3.font.name = "Aptos Narrow"
@@ -558,16 +567,15 @@ def render_registro_iva():
         run3.font.size = Pt(10)
         run3.bold = True
 
-        # Destra
+        # Destra: ANNO (Calibri 10), Entrate (Aptos Narrow 10 bold) e pagina (placeholder)
         pR = hdr_right.paragraphs[0]
         pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
         run4 = pR.add_run(f"ANNO {anno}\n")
         run4.font.name = "Calibri"
         run4.font.size = Pt(10)
-        run4.bold = False
 
-        run5 = pR.add_run(f"Entrate dal {data_min_str} al {data_max_str}")
+        run5 = pR.add_run(f"Entrate dal {data_min_str} al {data_max_str}\n")
         run5.font.name = "Aptos Narrow"
         run5._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
         run5.font.size = Pt(10)
@@ -575,7 +583,7 @@ def render_registro_iva():
 
         doc.add_paragraph()  # spazio
 
-        # --- Tabella principale (da df_display_str) ---
+        # === Tabella principale (tutte le colonne, incl. "Totale Imponibile") ===
         rows, cols = df_display_str.shape
         table = doc.add_table(rows=rows + 1, cols=cols)
         table.style = "Table Grid"
@@ -596,7 +604,11 @@ def render_registro_iva():
 
         doc.add_paragraph()
 
-        # --- Totali finali (da df_num) ---
+        # === Totali finali dalla vista numerica ===
+        def euro_it(v: float) -> str:
+            s = f"{v:,.2f}"
+            return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
         tot_netto = df_num.get("tot_netto", pd.Series([], dtype=float)).sum()
         tot_enpav = df_num.get("tot_enpav", pd.Series([], dtype=float)).sum()
         tot_imp   = df_num.get("tot_imponibile", pd.Series([], dtype=float)).sum()
@@ -604,10 +616,6 @@ def render_registro_iva():
         tot_sco   = df_num.get("tot_sconto", pd.Series([], dtype=float)).sum()
         tot_rit   = df_num.get("tot_rit", pd.Series([], dtype=float)).sum()
         tot_tot   = df_num.get("totale", pd.Series([], dtype=float)).sum()
-
-        def euro_it(v: float) -> str:
-            s = f"{v:,.2f}"
-            return s.replace(",", "X").replace(".", ",").replace("X", ".")
 
         doc.add_paragraph("Totali Finali:\n")
         doc.add_paragraph(f"Totale Netto: {euro_it(tot_netto)} €")
@@ -618,7 +626,7 @@ def render_registro_iva():
         doc.add_paragraph(f"Ritenuta d'acconto: {euro_it(tot_rit)} €")
         doc.add_paragraph(f"Totale complessivo: {euro_it(tot_tot)} €")
 
-        # --- Esporta DOCX ---
+        # Esporta DOCX
         buf = BytesIO()
         doc.save(buf)
         buf.seek(0)
@@ -634,6 +642,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
