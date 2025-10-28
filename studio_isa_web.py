@@ -528,7 +528,7 @@ def render_registro_iva():
     try:
         hdr_table = header.add_table(1, 2, avail_width)  # firma legacy: (rows, cols, width)
     except TypeError:
-    hdr_table = header.add_table(rows=1, cols=2, width=avail_width)  # firma nuova
+        hdr_table = header.add_table(rows=1, cols=2, width=avail_width)  # firma nuova
     hdr_table.autofit = True
     hdr_left, hdr_right = hdr_table.rows[0].cells
 
@@ -627,6 +627,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
