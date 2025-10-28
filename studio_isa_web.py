@@ -457,9 +457,17 @@ def render_registro_iva():
     df = normalize_columns(df)
 
     # --- CONVERTI NUMERI (se esistono) ---
-    for col in ["tot_netto","tot_enpav","tot_imponibile","tot_iva","tot_sconto","tot_rit","totale"]:
-        if col in df.columns:
-            df[col] = coerce_numeric(df[col])
+    num_cols = ["tot_netto","tot_enpav","tot_imponibile","tot_iva","tot_sconto","tot_rit","totale"]
+        for col in num_cols:
+            if col in df.columns:
+            df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(r"[^\d,.-]", "", regex=True)   # rimuove simboli
+            .str.replace(".", "", regex=False)          # elimina separatore migliaia
+            .str.replace(",", ".", regex=False)         # converte comma → punto decimale
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     # --- SISTEMA CITTA' + PROVINCIA E CAP ---
     if "Città" in df.columns:
@@ -556,6 +564,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
