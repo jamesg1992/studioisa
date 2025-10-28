@@ -9,6 +9,8 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font, PatternFill
 import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 
 # === CONFIG ===
 st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
@@ -123,13 +125,22 @@ def detect_year(df):
 
 # === CLASSIFICAZIONE ===
 def classify_A(desc, fam, mem):
+    d = norm(desc)
     fam_s = norm(fam)
     if fam_s and fam_s not in {"privato","professionista","nan","none",""}:
         return fam_s.upper()
-    d = norm(desc)
+        
     for k,v in mem.items():
         if norm(k) in d:
             return v
+    if model and vectorizer:
+        X_test = vectorizer.transform([d])
+        pred = model.predict(X_test)[0]
+        conf = model.predict_proba(X_test).max()
+
+        if conf >= 0.75:
+            return pred
+
     for cat, keys in RULES_A.items():
         if any_kw_in(d, keys):
             return cat
@@ -140,10 +151,34 @@ def classify_B(prest, mem):
     for k,v in mem.items():
         if norm(k) in d:
             return v
+
+    if model_B and vectorizer_B:
+        X_test = vectorizer_B.transform([d])
+        pred = model_B.predict(X_test)[0]
+        conf = model_B.predict_proba(X_test).max()
+
+        if conf >= 0.75:
+            return pred
+            
     for cat, keys in RULES_B.items():
         if any_kw_in(d, keys):
             return cat
     return "Altre attività"
+
+    # === AI Training Model ===
+def train_ai_model(dictionary):
+    if not dictionary:
+        return None, None
+
+    texts = list(dictionary.keys())
+    labels = list(dictionary.values())
+
+    vectorizer = TfidfVectorizer(lowercase=True, stop_words=None)
+    X = vectorizer.fit_transform(texts)
+
+    model = MultinomialNB()
+    model.fit(X, labels)
+    return vectorizer, model
 
 # === MAIN ===
 page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA(ancora non attivo)"])
@@ -167,6 +202,11 @@ def main():
     mem = st.session_state.mem
     new = st.session_state.new
     mode = st.session_state.mode
+
+    if mode == "A":
+        vectorizer, model = train_ai_model(mem | new)
+    else:
+        vectorizer_B, model_B = train_ai_model(mem | new)
 
     # ==== TIPO A ====
     if mode == "A":
@@ -346,6 +386,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
