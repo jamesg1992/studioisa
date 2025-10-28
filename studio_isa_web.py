@@ -422,18 +422,53 @@ def main():
 def render_registro_iva():
     st.header("📄 Registro IVA - Vendite")
 
-    struttura = st.text_input("Nome Struttura")
-    indirizzo = st.text_input("Indirizzo (Via, CAP, Città)")
-    piva = st.text_input("Partita IVA")
+    c1, c2 = st.columns(2)
+    with c1:
+        struttura = st.text_input("Nome Struttura")
+        indirizzo = st.text_input("Indirizzo (Via, CAP, Città)")
+        piva = st.text_input("Partita IVA")
+    with c2:
+        note_header = st.text_input("Nota intestazione destra (opzionale)", "")
 
     file = st.file_uploader("Carica il file Registro IVA (Excel)", type=["xlsx"])
     if not file or not struttura:
         return
 
+    # --- Lettura e normalizzazione ---
     df = pd.read_excel(file)
 
-    # Normalizzazione nomi colonne
-    ren = {
+    # Nomi colonne attesi dal tracciato
+    expected_cols = [
+        "Data", "Numero", "Cliente", "P.Iva", "Codice Fiscale",
+        "Indirizzo", "CAP", "Città", "Totale Netto", "Totale ENPAV",
+        "Totale Imponibile", "Totale IVA", "Totale Sconto",
+        "Rit. d'acconto", "Totale"
+    ]
+    # Manteniamo l'ordine/filtriamo all'occorrenza (se mancano alcune colonne, gestiamo graceful)
+    cols_presenti = [c for c in expected_cols if c in df.columns]
+    df = df[cols_presenti].copy()
+
+    # Coercizione data (dd/mm/yyyy hh:mm:ss o simili)
+    if "Data" not in df.columns:
+        st.error("❌ Colonna 'Data' non trovata nel file.")
+        return
+
+    df["Data"] = (
+        df["Data"].astype(str)
+        .str.extract(r"(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})")[0]
+        .apply(lambda x: pd.to_datetime(x, dayfirst=True, errors="coerce"))
+    )
+
+    if df["Data"].notna().sum() == 0:
+        st.error("❌ Nessuna data valida riconosciuta nella colonna 'Data'.")
+        return
+
+    data_min = df["Data"].min().strftime("%d/%m/%Y")
+    data_max = df["Data"].max().strftime("%d/%m/%Y")
+    anno = int(df["Data"].dt.year.dropna().mode()[0])
+
+    # Coercizione importi dove presenti
+    ren_num = {
         "Totale Netto": "tot_netto",
         "Totale ENPAV": "tot_enpav",
         "Totale Imponibile": "tot_imponibile",
@@ -442,74 +477,159 @@ def render_registro_iva():
         "Rit. d'acconto": "tot_rit",
         "Totale": "totale"
     }
-    df = df.rename(columns={c: ren.get(c, c) for c in df.columns})
+    df = df.rename(columns={c: ren_num.get(c, c) for c in df.columns})
+    for c in ren_num.values():
+        if c in df.columns:
+            df[c] = coerce_numeric(df[c])
 
-    # Converti importi
-    for c in ren.values():
-        df[c] = coerce_numeric(df[c])
-
-    data_min = pd.to_datetime(df["Data"], dayfirst=True).min().strftime("%d/%m/%Y")
-    data_max = pd.to_datetime(df["Data"], dayfirst=True).max().strftime("%d/%m/%Y")
-    anno = pd.to_datetime(df["Data"], dayfirst=True).dt.year.mode()[0]
-
-    # Crea documento Word
+    # --- Crea documento Word in orizzontale ---
     doc = Document()
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
+    # A4 landscape
     section.page_width = Inches(11.69)
     section.page_height = Inches(8.27)
     section.left_margin = Inches(0.4)
     section.right_margin = Inches(0.4)
+    section.top_margin = Inches(0.4)
+    section.bottom_margin = Inches(0.4)
 
-    # Font base
-    style = doc.styles['Normal']
+    # Font base Aptos Narrow 8 (fallback a Calibri Narrow se non disponibile)
+    style = doc.styles["Normal"]
     style.font.name = "Aptos Narrow"
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
+    try:
+        style._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+    except Exception:
+        pass
     style.font.size = Pt(8)
 
-    # Header Layout
+    # --- Header: tabella 2 colonne (sx/dx) ---
     header = section.header
-    table = header.add_table(rows=1, cols=2, width=Inches(11))
-    cell_left, cell_right = table.rows[0].cells
+    hdr_table = header.add_table(rows=1, cols=2)
+    hdr_table.autofit = True
+    hdr_table.allow_autofit = True
+    hdr_left, hdr_right = hdr_table.rows[0].cells
 
-    cell_left.text = f"""{struttura}
-    {indirizzo}
-    P.IVA {piva}"""
+    # Sinistra
+    pL = hdr_left.paragraphs[0]
+    pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    runL = pL.add_run(f"{struttura}\n{indirizzo}\nP.IVA {piva}")
+    runL.font.name = "Aptos Narrow"
+    runL.font.size = Pt(8)
 
-    cell_right.text = f"""ANNO {anno}
-    Entrate dal {data_min} al {data_max}"""
+    # Destra (ANNO, intervallo date, Pag. X di Y)
+    pR = hdr_right.paragraphs[0]
+    pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    runR1 = pR.add_run(f"ANNO {anno}\nEntrate dal {data_min} al {data_max}")
+    if note_header.strip():
+        runR1.add_break()
+        runR12 = pR.add_run(note_header.strip())
 
-    # Tabella Registro
-    table = doc.add_table(df.shape[0] + 1, df.shape[1])
-    table.style = "Table Grid"
+    # Nuova riga con "Pag. X di Y"
+    pR2 = header.add_paragraph()
+    pR2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _ = pR2.add_run("Pag. ")
+    # Campo PAGE
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import nsmap
 
-    for j, col in enumerate(df.columns):
-        table.cell(0, j).text = col
+    def _add_field(paragraph, instr_text):
+        """Inserisce un campo Word (es. PAGE, NUMPAGES)."""
+        r = paragraph.add_run()
+        fldChar1 = OxmlElement("w:fldChar")
+        fldChar1.set(qn("w:fldCharType"), "begin")
+        r._r.append(fldChar1)
 
-    for i in range(df.shape[0]):
-        for j in range(df.shape[1]):
-            table.cell(i+1, j).text = str(df.iloc[i, j])
+        instr = OxmlElement("w:instrText")
+        instr.set(qn("xml:space"), "preserve")
+        instr.text = instr_text
+        r._r.append(instr)
 
-    # Totali finali
-    doc.add_paragraph("\nTotali Finali:\n")
-    doc.add_paragraph(f"Totale Netto: {df['tot_netto'].sum():,.2f} €")
-    doc.add_paragraph(f"Totale ENPAV: {df['tot_enpav'].sum():,.2f} €")
-    doc.add_paragraph(f"Totale Imponibile: {df['tot_imponibile'].sum():,.2f} €")
-    doc.add_paragraph(f"Totale IVA: {df['tot_iva'].sum():,.2f} €")
-    doc.add_paragraph(f"Totale Sconto: {df['tot_sconto'].sum():,.2f} €")
-    doc.add_paragraph(f"Ritenuta d'acconto: {df['tot_rit'].sum():,.2f} €")
-    doc.add_paragraph(f"Totale complessivo: {df['totale'].sum():,.2f} €")
+        fldChar2 = OxmlElement("w:fldChar")
+        fldChar2.set(qn("w:fldCharType"), "separate")
+        r._r.append(fldChar2)
 
-    # Esporta Word
+        t = OxmlElement("w:t")
+        t.text = "1"
+        r._r.append(t)
+
+        fldChar3 = OxmlElement("w:fldChar")
+        fldChar3.set(qn("w:fldCharType"), "end")
+        r._r.append(fldChar3)
+
+    _add_field(pR2, " PAGE ")
+    _ = pR2.add_run(" di ")
+    _add_field(pR2, " NUMPAGES ")
+
+    # --- Tabella dati (tutte le colonne presenti) ---
+    # Ripristina intestazioni “pulite” come le vede l’utente
+    inv_ren = {v: k for k, v in ren_num.items()}
+    vis_cols = [inv_ren.get(c, c) for c in df.columns]  # nomi come in input
+
+    tbl = doc.add_table(rows=1, cols=len(df.columns))
+    tbl.style = "Table Grid"
+    tbl.autofit = True
+
+    # Header row
+    for j, col in enumerate(vis_cols):
+        cell = tbl.cell(0, j)
+        cell.text = str(col)
+
+    # Ripeti header su ogni pagina
+    try:
+        tr = tbl.rows[0]._tr
+        trPr = tr.get_or_add_trPr()
+        tblHeader = OxmlElement('w:tblHeader')
+        trPr.append(tblHeader)
+    except Exception:
+        pass
+
+    # Righe dati
+    for _, row in df.iterrows():
+        cells = tbl.add_row().cells
+        for j, col in enumerate(df.columns):
+            val = row[col]
+            if pd.api.types.is_number(val):
+                cells[j].text = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            elif isinstance(val, pd.Timestamp):
+                cells[j].text = val.strftime("%d/%m/%Y")
+            else:
+                cells[j].text = "" if pd.isna(val) else str(val)
+
+    # --- Totali finali (ultima pagina) ---
+    def fmt(n):
+        return f"{n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    doc.add_paragraph()  # spazio
+    pTot = doc.add_paragraph("Totali Finali:", style="Normal")
+    pTot.runs[0].font.bold = True
+
+    tot_netto = fmt(df["tot_netto"].sum()) if "tot_netto" in df.columns else "0,00"
+    tot_enpav = fmt(df["tot_enpav"].sum()) if "tot_enpav" in df.columns else "0,00"
+    tot_imponibile = fmt(df["tot_imponibile"].sum()) if "tot_imponibile" in df.columns else "0,00"
+    tot_iva = fmt(df["tot_iva"].sum()) if "tot_iva" in df.columns else "0,00"
+    tot_sconto = fmt(df["tot_sconto"].sum()) if "tot_sconto" in df.columns else "0,00"
+    tot_rit = fmt(df["tot_rit"].sum()) if "tot_rit" in df.columns else "0,00"
+    tot_totale = fmt(df["totale"].sum()) if "totale" in df.columns else "0,00"
+
+    doc.add_paragraph(f"• Totale Netto (IVA 22%): {tot_netto} €")
+    doc.add_paragraph(f"• Totale ENPAV (IVA 22%): {tot_enpav} €")
+    doc.add_paragraph(f"• Totale Imponibile (IVA 22%): {tot_imponibile} €")
+    doc.add_paragraph(f"• Importo IVA (22%): {tot_iva} €")
+    doc.add_paragraph(f"• Totale Sconto: {tot_sconto} €")
+    doc.add_paragraph(f"• Ritenuta d'acconto: {tot_rit} €")
+    doc.add_paragraph(f"• Totale complessivo: {tot_totale} €")
+
+    # --- Esporta Word ---
     buf = BytesIO()
     doc.save(buf)
     buf.seek(0)
-
     st.download_button("⬇️ Scarica Registro IVA (Word)", buf, file_name=f"Registro_IVA_{anno}.docx")
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
