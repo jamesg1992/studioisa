@@ -520,6 +520,14 @@ def render_registro_iva():
 
     df_display = df_raw.loc[:, cols_presenti].copy()
 
+    # --- Aggiungi provincia nella colonna "Città" ---
+    if "Città" in df_display.columns:
+        if provincia_ui:
+            df_display["Città"] = (
+                df_display["Città"].astype(str).str.strip()
+                + " (" + provincia_ui.upper().strip() + ")"
+            )
+
     # CAP pulito (evita “40.033,00” o simili)
     if "CAP" in df_display.columns:
         df_display["CAP"] = (
@@ -676,6 +684,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
