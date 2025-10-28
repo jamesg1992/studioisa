@@ -510,7 +510,7 @@ def render_registro_iva():
     hdr_left, hdr_right = hdr_table.rows[0].cells
 
     # Sinistra
-    pL = cell_left.paraghaphs[0]
+    pL = hdr_left.paragraphs[0]
     pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     run1 = pL.add_run(struttura + "\n")
@@ -530,7 +530,7 @@ def render_registro_iva():
     run3.bold = True
 
     # Destra (ANNO, intervallo date, Pag. X di Y)
-    pR = cell_right.paragraphs[0]
+    pR = hdr_right.paragraphs[0]
     pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     run4 = pR.add_run(f"ANNO {anno}\n")
@@ -648,6 +648,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
