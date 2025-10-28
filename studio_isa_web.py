@@ -521,7 +521,14 @@ def render_registro_iva():
 
     # --- Header con due celle (sx/dx) ---
     header = section.header
-    hdr_table = header.add_table(rows=1, cols=2)
+    # Calcola la larghezza utile della pagina (paesaggio) al netto dei margini
+    avail_width = section.page_width - section.left_margin - section.right_margin
+
+    # Alcune versioni vogliono il 3° parametro POSIZIONALE, altre accettano la keyword
+    try:
+        hdr_table = header.add_table(1, 2, avail_width)  # firma legacy: (rows, cols, width)
+    except TypeError:
+    hdr_table = header.add_table(rows=1, cols=2, width=avail_width)  # firma nuova
     hdr_table.autofit = True
     hdr_left, hdr_right = hdr_table.rows[0].cells
 
@@ -620,6 +627,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
