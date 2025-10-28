@@ -7,12 +7,14 @@ from decimal import Decimal, ROUND_HALF_UP
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font, PatternFill
 import matplotlib.pyplot as plt
+
+# AI
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
-# === CONFIG ===
+
+# =============== CONFIG =================
 st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
 
 GITHUB_FILE_A = "dizionario_drveto.json"
@@ -20,22 +22,34 @@ GITHUB_FILE_B = "dizionario_vetsgo.json"
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-# === UTILS ===
+# AI MODELS (global placeholders)
+model = None
+vectorizer = None
+model_B = None
+vectorizer_B = None
+
+
+# =============== UTILS =================
 def norm(s):
     return re.sub(r"\s+", " ", str(s).strip().lower())
+
 
 def any_kw_in(t, keys):
     return any(k in t for k in keys)
 
-def coerce_numeric(s: pd.Series) -> pd.Series:
+
+def coerce_numeric(s):
     if pd.api.types.is_numeric_dtype(s):
         return pd.to_numeric(s, errors="coerce").fillna(0)
-    s = (s.astype(str)
-         .str.replace(r"\s", "", regex=True)
-         .str.replace("€", "", regex=False)
-         .str.replace(".", "", regex=False)
-         .str.replace(",", ".", regex=False))
+    s = (
+        s.astype(str)
+        .str.replace(r"\s", "", regex=True)
+        .str.replace("€", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+    )
     return pd.to_numeric(s, errors="coerce").fillna(0)
+
 
 def round_pct(values):
     values = pd.to_numeric(values, errors="coerce").fillna(0)
@@ -48,21 +62,25 @@ def round_pct(values):
     rounded[-1] = (rounded[-1] + diff).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return pd.Series([float(x) for x in rounded], index=values.index)
 
+
 @st.cache_data(ttl=600, show_spinner=False)
 def load_excel(file):
     return pd.read_excel(file)
 
-# === GITHUB ===
+
+# =============== GITHUB =================
 def github_load_json(file_name):
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
         r = requests.get(url, headers=headers, timeout=12)
         if r.status_code == 200:
-            return {norm(k): v for k, v in json.loads(base64.b64decode(r.json()["content"]).decode("utf-8")).items()}
+            raw = json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
+            return {norm(k): v for k, v in raw.items()}
     except:
         pass
     return {}
+
 
 def github_save_json(file_name, data):
     try:
@@ -70,15 +88,18 @@ def github_save_json(file_name, data):
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
         get = requests.get(url, headers=headers, timeout=12)
         sha = get.json().get("sha") if get.status_code == 200 else None
+
         encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
         payload = {"message": "Update ISA dictionary", "content": encoded, "branch": "main"}
         if sha:
             payload["sha"] = sha
+
         requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
     except:
         pass
 
-# === REGOLE ===
+
+# =============== CATEGORY RULES =================
 RULES_A = {
     "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt","urine"],
     "VISITE": ["visita","controllo","consulto","dermatologic"],
@@ -101,94 +122,83 @@ RULES_B = {
     "Altre attività": ["acconto"]
 }
 
-ORDER_B = [
-    "Visite domiciliari o presso allevamenti",
-    "Visite ambulatoriali",
-    "Esami diagnostici per immagine",
-    "Altri esami diagnostici",
-    "Interventi chirurgici",
-    "Altre attività",
-    "Totale"
-]
-#Nome file lo prende dalla colonna del file excel
-def detect_year(df):
-    date_cols = [c for c in df.columns if "data" in c.lower()]
-    for col in date_cols:
-        try:
-            dates = pd.to_datetime(df[col], errors="coerce")
-            year = dates.dt.year.dropna().mode()[0]
-            return int(year)
-        except:
-            pass
-        return datetime.now().year
+ORDER_B = list(RULES_B.keys()) + ["Totale"]
 
 
-# === CLASSIFICAZIONE ===
+# =============== AI TRAIN =================
+def train_ai_model(dictionary):
+    if not dictionary:
+        return None, None
+    texts = list(dictionary.keys())
+    labels = list(dictionary.values())
+    vec = TfidfVectorizer(lowercase=True)
+    X = vec.fit_transform(texts)
+    m = MultinomialNB()
+    m.fit(X, labels)
+    return vec, m
+
+
+# =============== CLASSIFICATION =================
 def classify_A(desc, fam, mem):
+    global model, vectorizer
     d = norm(desc)
+
     fam_s = norm(fam)
     if fam_s and fam_s not in {"privato","professionista","nan","none",""}:
         return fam_s.upper()
-        
+
     for k,v in mem.items():
         if norm(k) in d:
             return v
-    if model and vectorizer:
-        X_test = vectorizer.transform([d])
-        pred = model.predict(X_test)[0]
-        conf = model.predict_proba(X_test).max()
 
+    if model and vectorizer:
+        X = vectorizer.transform([d])
+        pred = model.predict(X)[0]
+        conf = model.predict_proba(X).max()
         if conf >= 0.75:
             return pred
 
     for cat, keys in RULES_A.items():
         if any_kw_in(d, keys):
             return cat
+
     return "ALTRE PRESTAZIONI"
 
+
 def classify_B(prest, mem):
+    global model_B, vectorizer_B
     d = norm(prest)
+
     for k,v in mem.items():
         if norm(k) in d:
             return v
 
     if model_B and vectorizer_B:
-        X_test = vectorizer_B.transform([d])
-        pred = model_B.predict(X_test)[0]
-        conf = model_B.predict_proba(X_test).max()
-
+        X = vectorizer_B.transform([d])
+        pred = model_B.predict(X)[0]
+        conf = model_B.predict_proba(X).max()
         if conf >= 0.75:
             return pred
-            
+
     for cat, keys in RULES_B.items():
         if any_kw_in(d, keys):
             return cat
+
     return "Altre attività"
 
-    # === AI Training Model ===
-def train_ai_model(dictionary):
-    if not dictionary:
-        return None, None
 
-    texts = list(dictionary.keys())
-    labels = list(dictionary.values())
+# =============== MAIN =================
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale"])
 
-    vectorizer = TfidfVectorizer(lowercase=True, stop_words=None)
-    X = vectorizer.fit_transform(texts)
 
-    model = MultinomialNB()
-    model.fit(X, labels)
-    return vectorizer, model
-
-# === MAIN ===
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA(ancora non attivo)"])
 def main():
-    st.title("📊 Studio ISA – DrVeto + VetsGo")
 
+    st.title("📊 Studio ISA – DrVeto + VetsGo")
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
         st.stop()
 
+    # Load file only once
     if "df" not in st.session_state:
         df = load_excel(file)
         st.session_state.df = df
@@ -203,81 +213,78 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
+    # Train AI
+    global model, vectorizer, model_B, vectorizer_B
     if mode == "A":
         vectorizer, model = train_ai_model(mem | new)
     else:
         vectorizer_B, model_B = train_ai_model(mem | new)
 
-    # ==== TIPO A ====
+
+    # ===== PROCESS A =====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
         fam = next((c for c in df.columns if "famiglia" in c.lower()), None)
         qta = next(c for c in df.columns if "quant" in c.lower() or c.strip()=="%")
         netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
-
         df[qta] = coerce_numeric(df[qta])
         df[netto] = coerce_numeric(df[netto])
-        df["_clean"] = df[desc].map(norm)
+        base = desc
         df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem|new), axis=1)
-        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
 
-    # ==== TIPO B ====
+
+    # ===== PROCESS B =====
     else:
         prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ","").lower())
         imp = next(c for c in df.columns if "totaleimpon" in c.lower())
         iva_col = next((c for c in df.columns if "totaleconiva" in c.replace(" ","").lower()), None)
         tot = next(c for c in df.columns if c.lower().strip()=="totale" or "totale" in c.lower())
-
         df[imp] = coerce_numeric(df[imp])
         if iva_col:
             df[iva_col] = coerce_numeric(df[iva_col])
         df[tot] = coerce_numeric(df[tot])
-
-        df["_clean"] = df[prest].map(norm)
+        base = prest
         df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem|new))
-        df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
 
-    # === APPRENDIMENTO ===
+
+    # Remove Privato / Professionista
+    df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
+
+
+    # ===== LEARNING INTERFACE =====
     learned = {norm(k) for k in (mem|new).keys()}
-    base = desc if mode=="A" else prest
     df["_clean"] = df[base].astype(str).map(norm)
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
-        idx = st.session_state.get("idx", 0)
-        if idx >= len(pending):
-            idx = 0
-            st.session_state.idx = 0
+        idx = st.session_state.idx
         term = pending[idx]
-
         opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
         last = st.session_state.get("last_cat", opts[0])
-        default_index = opts.index(last) if last in opts else 0
 
         st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
-        cat_sel = st.selectbox("Categoria:", opts, index=default_index)
+        cat_sel = st.selectbox("Categoria:", opts, index=opts.index(last) if last in opts else 0)
 
         if st.button("✅ Salva e prossimo"):
             new[norm(term)] = cat_sel
-            st.session_state.new = new
             st.session_state.last_cat = cat_sel
 
             if idx + 1 >= len(pending):
                 mem.update(new)
                 github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
-                st.success("🎉 Tutto classificato e salvato!")
+                st.success("🎉 Salvataggio completato!")
                 st.session_state.idx = 0
                 st.session_state.new = {}
                 st.stop()
 
+            st.session_state.new = new
             st.session_state.idx += 1
             st.rerun()
 
         st.stop()
 
-    # === REPORT ===
-    df = df.drop(columns=["_clean"], errors="ignore")
 
+    # ===== REPORT =====
     if mode == "A":
         studio = df.groupby("CategoriaFinale").agg({qta:"sum", netto:"sum"}).reset_index()
         studio.columns = ["Categoria","Qtà","Netto"]
@@ -288,7 +295,6 @@ def main():
         title = "Somma Netto per Categoria"
 
     else:
-        iva_col = next(c for c in df.columns if "totaleconiva" in c.replace(" ","").lower())
         studio = df.groupby("CategoriaFinale").agg({imp:"sum", iva_col:"sum"}).reset_index()
         studio.columns = ["Categoria","TotaleImponibile","TotaleConIVA"]
         studio["% Totale"] = round_pct(studio["TotaleConIVA"])
@@ -312,88 +318,40 @@ def main():
         ws.append(r)
     ws.add_image(XLImage(buf), f"A{len(studio)+3}")
     out = BytesIO(); wb.save(out)
-    anno = detect_year(df)
-    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name=f"StudioISA_{anno}.xlsx")
 
-    # === DASHBOARD ANNUALE ===
+    st.download_button("⬇️ Scarica Excel", data=out.getvalue(), file_name="StudioISA.xlsx")
+
+
+    # ===== DASHBOARD =====
     if page == "Dashboard Annuale":
         st.header("📈 Dashboard Andamento Annuale")
 
-        # Trova colonna data
         date_col = next(c for c in df.columns if "data" in c.replace(" ", "").lower())
         df[date_col] = (
-            df[date_col]
-            .astype(str)
+            df[date_col].astype(str)
             .str.extract(r'(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})')[0]
             .apply(lambda x: pd.to_datetime(x, dayfirst=True, errors="coerce"))
         )
 
-        # Colonna importo in base al gestionale
-        if mode == "A":
-            value_col = netto   # DrVeto usa NETTO DOPO SCONTO
-        else:
-            value_col = tot     # VetsGo usa TOTALE
-
-        # Estrai anno e mese
+        value_col = netto if mode=="A" else tot
         df["Anno"] = df[date_col].dt.year
         df["Mese"] = df[date_col].dt.to_period("M").astype(str)
 
         anni = sorted(df["Anno"].dropna().unique())
         anno_sel = st.selectbox("Seleziona Anno:", anni, index=len(anni)-1)
-
         dfY = df[df["Anno"] == anno_sel]
 
-        # === 1) Trend Mensile ===
         monthly = dfY.groupby("Mese")[value_col].sum().reset_index()
-
-        all_months = pd.period_range(f"{anno_sel}-01", f"{anno_sel}-12", freq="M").astype(str)
-        monthly = monthly.set_index("Mese").reindex(all_months, fill_value=0).reset_index().rename(columns={"index":"Mese"})
-
-        st.subheader("Trend Fatturato Mensile")
         st.line_chart(monthly.set_index("Mese"))
 
-        #Salva grafico mensile
-        fig_m, ax_m = plt.subplots(figsize=(8,5))
-        ax_m.plot(monthly["Mese"], monthly[value_col], marker="o")
-        ax_m.set_title(f"Trend Mensile {anno_sel}")
-        plt.xticks(rotation=45, ha="right")
-        buf_m = BytesIO(); plt.tight_layout(); plt.savefig(buf_m, format="png"); buf_m.seek(0)
-        st.image(buf_m)
-
-        st.download_button(
-            "📸 Scarica grafico mensile (PNG)",
-            data=buf_m.getvalue(),
-            file_name=f"Trend_Mensile_{anno_sel}.png",
-            mime="image/png"
-        )
-
-        # === 2) Ripartizione Categorie ===
         catshare = dfY.groupby("CategoriaFinale")[value_col].sum().reset_index()
         catshare["%"] = round_pct(catshare[value_col])
-
-        st.subheader("Ripartizione per Categoria")
         st.bar_chart(catshare.set_index("CategoriaFinale")["%"])
 
-        # === 3) Andamento delle Categorie nel tempo ===
         area = dfY.groupby(["Mese", "CategoriaFinale"])[value_col].sum().reset_index()
         area = area.pivot(index="Mese", columns="CategoriaFinale", values=value_col).fillna(0)
-
-        st.subheader("Andamento Categorie nel Tempo")
         st.area_chart(area)
 
-        st.stop()
-    
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
