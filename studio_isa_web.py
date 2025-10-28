@@ -12,6 +12,10 @@ import matplotlib.pyplot as plt
 # AI
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
+from docx import Document
+from docx.shared import Cm, Pt
+from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 # =============== CONFIG =================
@@ -27,7 +31,6 @@ model = None
 vectorizer = None
 model_B = None
 vectorizer_B = None
-
 
 # =============== UTILS =================
 def norm(s):
@@ -176,10 +179,271 @@ def classify_B(prest, mem):
 
 
 # =============== SIDEBAR =================
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale"])
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA"])
+if page == "Registro IVA":
+    render_registro_iva()
 auto_thresh = st.sidebar.slider("Soglia auto-apprendimento (AI)", 0.50, 0.99, 0.85, 0.01)
 st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
 
+# =============== REGISTRO IVA ===========
+# --- HELPER: coercizione numerica robusta ---
+def _coerce_numeric_series(s: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(s):
+        return pd.to_numeric(s, errors="coerce").fillna(0)
+    s = (s.astype(str)
+         .str.replace(r"\s", "", regex=True)
+         .str.replace("€", "", regex=False)
+         .str.replace(".", "", regex=False)
+         .str.replace(",", ".", regex=False))
+    return pd.to_numeric(s, errors="coerce").fillna(0)
+
+# --- HELPER: trova colonna per nome “fuzzy” ---
+def _find_col(df: pd.DataFrame, *needles, required=True):
+    cols = list(df.columns)
+    low = [c.lower().replace(" ", "") for c in cols]
+    for i, c in enumerate(low):
+        if all(n.lower().replace(" ", "") in c for n in needles):
+            return cols[i]
+    if required:
+        raise ValueError(f"Colonna non trovata: {needles}")
+    return None
+
+# --- HELPER: costruzione DOCX orizzontale in memoria ---
+def _build_registro_iva_docx(df: pd.DataFrame, header: dict) -> bytes:
+    doc = Document()
+
+    # A4 landscape + margini
+    section = doc.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    # A4: 29.7 x 21.0 cm → in landscape width>height
+    section.page_width, section.page_height = Cm(29.7), Cm(21.0)
+    # Margini
+    section.top_margin = Cm(1.5)
+    section.bottom_margin = Cm(1.5)
+    section.left_margin = Cm(1.5)
+    section.right_margin = Cm(1.5)
+
+    # Intestazione struttura
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p.add_run(header.get("denominazione", ""))
+    r.bold = True; r.font.size = Pt(14)
+    if header.get("indirizzo"):
+        doc.add_paragraph(header["indirizzo"]).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    riga2 = []
+    if header.get("cap"): riga2.append(header["cap"])
+    if header.get("citta"): riga2.append(header["citta"])
+    if header.get("provincia"): riga2.append(f"({header['provincia']})")
+    if riga2:
+        doc.add_paragraph(" ".join(riga2)).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    riga3 = []
+    if header.get("piva"): riga3.append(f"P.IVA {header['piva']}")
+    if header.get("cf"): riga3.append(f"CF {header['cf']}")
+    if riga3:
+        doc.add_paragraph(" • ".join(riga3)).alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Spazio
+    doc.add_paragraph("")
+
+    # Titolo registro
+    tp = doc.add_paragraph()
+    tp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    tr = tp.add_run("Registro IVA – Vendite")
+    tr.bold = True; tr.font.size = Pt(12)
+
+    # Tabella principale
+    cols_order = [
+        "Data", "Numero", "Cliente", "P.Iva", "Codice Fiscale",
+        "Indirizzo", "CAP", "Città", "Totale Netto",
+        "Totale ENPAV", "Totale Imponibile", "Totale IVA",
+        "Totale Sconto", "Rit. d'acconto", "Totale"
+    ]
+    table = doc.add_table(rows=1, cols=len(cols_order))
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    for j, h in enumerate(cols_order):
+        run = hdr_cells[j].paragraphs[0].add_run(h)
+        run.bold = True
+
+    # Righe tabella
+    for _, row in df[cols_order].iterrows():
+        cells = table.add_row().cells
+        for j, h in enumerate(cols_order):
+            val = row[h]
+            if isinstance(val, float) or isinstance(val, int):
+                text = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            else:
+                text = "" if pd.isna(val) else str(val)
+            cells[j].paragraphs[0].add_run(text)
+
+    # --- Pagina totali ---
+    doc.add_page_break()
+
+    doc.add_paragraph().add_run("Riepilogo Totali").bold = True
+
+    # Tabella totali generali
+    tot_table = doc.add_table(rows=1, cols=7)
+    tot_table.style = "Table Grid"
+    tot_hdr = ["Totale Netto", "Totale ENPAV", "Totale Imponibile", "Totale IVA",
+               "Totale Sconto", "Rit. d'acconto", "Totale"]
+    for j, h in enumerate(tot_hdr):
+        r = tot_table.rows[0].cells[j].paragraphs[0].add_run(h); r.bold = True
+
+    # Somme generali
+    def _sum(col): return float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+    totals = [
+        _sum("Totale Netto"),
+        _sum("Totale ENPAV"),
+        _sum("Totale Imponibile"),
+        _sum("Totale IVA"),
+        _sum("Totale Sconto"),
+        _sum("Rit. d'acconto"),
+        _sum("Totale"),
+    ]
+    row = tot_table.add_row().cells
+    for j, v in enumerate(totals):
+        row[j].paragraphs[0].add_run(
+            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+
+    # Sezione IVA 22%
+    doc.add_paragraph("")
+    doc.add_paragraph().add_run("Riepilogo IVA 22%").bold = True
+
+    iva22_table = doc.add_table(rows=1, cols=4)
+    iva22_table.style = "Table Grid"
+    hdr_22 = ["Tot. Netto (22%)", "Tot. ENPAV (22%)", "Tot. Imponibile (22%)", "Importo IVA (22%)"]
+    for j, h in enumerate(hdr_22):
+        r = iva22_table.rows[0].cells[j].paragraphs[0].add_run(h); r.bold = True
+
+    # Calcolo 22%: prova a filtrare per colonna aliquota; se non c'è, usa tutte le righe
+    aliquota_col = None
+    for c in df.columns:
+        cl = c.lower()
+        if ("%iva" in cl) or ("aliquota" in cl) or ("aliq" in cl):
+            aliquota_col = c; break
+
+    if aliquota_col is not None:
+        aliq = pd.to_numeric(pd.to_numeric(df[aliquota_col], errors="coerce").fillna(0))
+        mask22 = aliq.eq(22) | aliq.eq(22.0)
+        df22 = df[mask22]
+        note_22 = ""
+    else:
+        df22 = df
+        note_22 = "⚠️ Aliquota non trovata: considerati tutti i movimenti come 22%."
+
+    def _sum22(col): return float(pd.to_numeric(df22[col], errors="coerce").fillna(0).sum())
+    vals22 = [
+        _sum22("Totale Netto"),
+        _sum22("Totale ENPAV"),
+        _sum22("Totale Imponibile"),
+        _sum22("Totale IVA")
+    ]
+    row22 = iva22_table.add_row().cells
+    for j, v in enumerate(vals22):
+        row22[j].paragraphs[0].add_run(
+            f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+
+    if note_22:
+        doc.add_paragraph(note_22)
+
+    # Esporta
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
+
+# --- RENDER DELLA PAGINA "Registro IVA" ---
+def render_registro_iva():
+    st.header("📄 Registro IVA (Word)")
+
+    # Dati intestazione struttura
+    st.subheader("Intestazione")
+    c1, c2, c3 = st.columns([1.2,1,1])
+    with c1:
+        denominazione = st.text_input("Denominazione", placeholder="Clinica Veterinaria ...")
+        indirizzo = st.text_input("Indirizzo", placeholder="Via/Piazza ...")
+    with c2:
+        cap = st.text_input("CAP", placeholder="00000")
+        citta = st.text_input("Città", placeholder="Città")
+    with c3:
+        provincia = st.text_input("Provincia (sigla)", placeholder="MI")
+        piva = st.text_input("Partita IVA", placeholder="IT........")
+        cf = st.text_input("Codice Fiscale", placeholder="...")
+
+    uploaded = st.file_uploader("📁 Seleziona Excel (Registro IVA)", type=["xlsx","xls"])
+    if not uploaded:
+        st.info("Carica il file Excel del Registro IVA.")
+        return
+
+    df_raw = pd.read_excel(uploaded)
+
+    # Normalizzazione nomi colonne e coercizione numerica sui totali
+    try:
+        col_data   = _find_col(df_raw, "data")
+        col_num    = _find_col(df_raw, "numero")
+        col_cli    = _find_col(df_raw, "cliente")
+        col_piva   = _find_col(df_raw, "p.iva", required=False) or _find_col(df_raw, "piva", required=False) or "P.Iva"
+        col_cf     = _find_col(df_raw, "codice", "fiscale", required=False) or "Codice Fiscale"
+        col_addr   = _find_col(df_raw, "indirizzo", required=False) or "Indirizzo"
+        col_cap    = _find_col(df_raw, "cap", required=False) or "CAP"
+        col_citta  = _find_col(df_raw, "citt", required=False) or "Città"
+
+        col_tnetto = _find_col(df_raw, "totale", "netto")
+        col_enpav  = _find_col(df_raw, "totale", "enpav")
+        col_imp    = _find_col(df_raw, "totale", "imponibile")
+        col_iva    = _find_col(df_raw, "totale", "iva")
+        col_sconto = _find_col(df_raw, "totale", "sconto")
+        col_rit    = _find_col(df_raw, "rit", "acconto")
+        col_tot    = _find_col(df_raw, "totale")
+
+    except ValueError as e:
+        st.error(f"Colonne mancanti: {e}")
+        return
+
+    df = pd.DataFrame({
+        "Data": df_raw[col_data],
+        "Numero": df_raw[col_num],
+        "Cliente": df_raw[col_cli],
+        "P.Iva": df_raw.get(col_piva, ""),
+        "Codice Fiscale": df_raw.get(col_cf, ""),
+        "Indirizzo": df_raw.get(col_addr, ""),
+        "CAP": df_raw.get(col_cap, ""),
+        "Città": df_raw.get(col_citta, ""),
+        "Totale Netto": _coerce_numeric_series(df_raw[col_tnetto]),
+        "Totale ENPAV": _coerce_numeric_series(df_raw[col_enpav]),
+        "Totale Imponibile": _coerce_numeric_series(df_raw[col_imp]),
+        "Totale IVA": _coerce_numeric_series(df_raw[col_iva]),
+        "Totale Sconto": _coerce_numeric_series(df_raw[col_sconto]),
+        "Rit. d'acconto": _coerce_numeric_series(df_raw[col_rit]),
+        "Totale": _coerce_numeric_series(df_raw[col_tot]),
+    })
+
+    # Anteprima
+    st.subheader("Anteprima")
+    st.dataframe(df.head(30), use_container_width=True)
+
+    # Genera DOCX
+    if st.button("🖨️ Genera Word (Registro IVA)"):
+        header = {
+            "denominazione": denominazione,
+            "indirizzo": indirizzo,
+            "cap": cap,
+            "citta": citta,
+            "provincia": provincia,
+            "piva": piva,
+            "cf": cf,
+        }
+        docx_bytes = _build_registro_iva_docx(df, header)
+        anno = pd.to_datetime(df["Data"], errors="coerce").dt.year.dropna()
+        year_str = str(int(anno.mode()[0])) if not anno.empty else str(datetime.now().year)
+        st.download_button(
+            "⬇️ Scarica Registro IVA (DOCX)",
+            data=docx_bytes,
+            file_name=f"Registro_IVA_{year_str}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
 # =============== MAIN =================
 def main():
@@ -415,3 +679,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
