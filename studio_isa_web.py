@@ -423,147 +423,204 @@ def main():
 def render_registro_iva():
     st.header("📄 Registro IVA - Vendite")
 
+    # --- Input intestazione ---
     struttura = st.text_input("Nome Struttura")
     indirizzo = st.text_input("Indirizzo (Via, CAP, Città)")
     piva = st.text_input("Partita IVA")
 
     file = st.file_uploader("Carica il file Registro IVA (Excel)", type=["xlsx"])
+
     if not file or not struttura:
         return
 
+    # --- Lettura Excel ---
     df = pd.read_excel(file)
 
-    # --- NORMALIZZA NOMI COLONNE ---
-    def normalize_columns(df):
-        colmap = {}
-        for c in df.columns:
-            c_norm = c.strip().lower()
-            if "imponibil" in c_norm:
-                colmap[c] = "tot_imponibile"
-            elif "netto" in c_norm:
-                colmap[c] = "tot_netto"
-            elif "enpav" in c_norm:
-                colmap[c] = "tot_enpav"
-            elif "iva" in c_norm and "tot" in c_norm:
-                colmap[c] = "tot_iva"
-            elif "sconto" in c_norm:
-                colmap[c] = "tot_sconto"
-            elif "rit" in c_norm:
-                colmap[c] = "tot_rit"
-            elif c_norm.startswith("totale"):
-                colmap[c] = "totale"
-        return df.rename(columns=colmap)
+    # --- Colonne attese nel tracciato (ordine di stampa) ---
+    expected_cols = [
+        "Data", "Numero", "Cliente", "P.Iva", "Codice Fiscale",
+        "Indirizzo", "CAP", "Città",
+        "Totale Netto", "Totale ENPAV", "Totale Imponibile",
+        "Totale IVA", "Totale Sconto", "Rit. d'acconto", "Totale"
+    ]
+    cols_presenti = [c for c in expected_cols if c in df.columns]
+    if not cols_presenti:
+        st.error("❌ Il file non contiene colonne riconoscibili per il Registro IVA.")
+        return
 
-    df = normalize_columns(df)
+    # --- Copia solo le colonne presenti e nell'ordine desiderato ---
+    df = df[cols_presenti].copy()
 
-    # --- CONVERTI NUMERI (se esistono) ---
-    num_cols = ["tot_netto","tot_enpav","tot_imponibile","tot_iva","tot_sconto","tot_rit","totale"]
-        for col in num_cols:
-            if col in df.columns:
-            df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(r"[^\d,.-]", "", regex=True)   # rimuove simboli
-            .str.replace(".", "", regex=False)          # elimina separatore migliaia
-            .str.replace(",", ".", regex=False)         # converte comma → punto decimale
-        )
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    # --- Mappa nomi importi a key interne per i totali finali (senza alterare l'intestazione stampata) ---
+    num_map = {
+        "Totale Netto": "tot_netto",
+        "Totale ENPAV": "tot_enpav",
+        "Totale Imponibile": "tot_imponibile",
+        "Totale IVA": "tot_iva",
+        "Totale Sconto": "tot_sconto",
+        "Rit. d'acconto": "tot_rit",
+        "Totale": "totale",
+    }
 
-    # --- SISTEMA CITTA' + PROVINCIA E CAP ---
-    if "Città" in df.columns:
-        df["Città"] = df["Città"].astype(str).str.title()
+    # Crea colonne interne numeriche (se esistono nell'input)
+    for src_col, dst_col in num_map.items():
+        if src_col in df.columns:
+            # conversione robusta "1.234,56" -> 1234.56
+            s = (
+                df[src_col]
+                .astype(str)
+                .str.replace(r"[^\d,.-]", "", regex=True)  # rimuove simboli
+                .str.replace(".", "", regex=False)         # rimuove separatore migliaia
+                .str.replace(",", ".", regex=False)        # virgola -> punto decimale
+            )
+            df[dst_col] = pd.to_numeric(s, errors="coerce").fillna(0)
 
-    if "CAP" in df.columns:
-        df["CAP"] = df["CAP"].astype(str).str.replace(r"[^0-9]", "", regex=True)
+    # --- Date min/max per intestazione ---
+    if "Data" in df.columns:
+        # prova a normalizzare la data (supporta "dd/mm/yyyy hh:mm:ss")
+        date_parsed = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
+        data_min = date_parsed.min()
+        data_max = date_parsed.max()
+        if pd.notna(data_min) and pd.notna(data_max):
+            data_min_str = data_min.strftime("%d/%m/%Y")
+            data_max_str = data_max.strftime("%d/%m/%Y")
+            anno = int(date_parsed.dt.year.mode().iloc[0]) if not date_parsed.dt.year.dropna().empty else datetime.now().year
+        else:
+            data_min_str = data_max_str = "-"
+            anno = datetime.now().year
+    else:
+        data_min_str = data_max_str = "-"
+        anno = datetime.now().year
 
-    # --- DATE RANGE + ANNO ---
-    df["Data"] = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
-    data_min = df["Data"].min().strftime("%d/%m/%Y")
-    data_max = df["Data"].max().strftime("%d/%m/%Y")
-    anno = int(df["Data"].dt.year.mode()[0])
+    # --- Helpers di formattazione ---
+    def fmt_eur(x: float) -> str:
+        # 1234.56 -> "1.234,56"
+        s = f"{x:,.2f}"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # --- CREA DOCUMENTO WORD ---
+    def as_text(v) -> str:
+        # Non formattare CAP come numero, preserva testo
+        return "" if pd.isna(v) else str(v)
+
+    # --- Crea documento Word ---
     doc = Document()
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
-    section.page_width = Inches(11.69)
+    section.page_width = Inches(11.69)   # A4 Landscape
     section.page_height = Inches(8.27)
     section.left_margin = Inches(0.4)
     section.right_margin = Inches(0.4)
+    section.top_margin = Inches(0.6)
+    section.bottom_margin = Inches(0.6)
 
-    # --- HEADER ---
+    # Base font per il corpo
+    base_style = doc.styles["Normal"]
+    base_style.font.name = "Aptos Narrow"
+    base_style._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+    base_style.font.size = Pt(8)
+
+    # --- Header con due celle (sx/dx) ---
     header = section.header
-    table = header.add_table(rows=1, cols=2)
-    cell_left, cell_right = table.rows[0].cells
+    hdr_table = header.add_table(rows=1, cols=2)
+    hdr_table.autofit = True
+    hdr_left, hdr_right = hdr_table.rows[0].cells
 
     # Sinistra
-    pL = cell_left.paragraphs[0]
+    pL = hdr_left.paragraphs[0]
     pL.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    r1 = pL.add_run(struttura + "\n")
-    r1.font.name = "Segoe UI"
-    r1.font.size = Pt(14)
+    run1 = pL.add_run(str(struttura) + "\n")
+    run1.font.name = "Segoe UI"
+    run1.font.size = Pt(14)
+    run1.bold = False
 
-    r2 = pL.add_run(indirizzo + "\n")
-    r2.font.name = "Segoe UI"
-    r2.font.size = Pt(12)
+    run2 = pL.add_run(str(indirizzo) + "\n")
+    run2.font.name = "Segoe UI"
+    run2.font.size = Pt(12)
+    run2.bold = False
 
-    r3 = pL.add_run(f"P.IVA {piva}")
-    r3.font.name = "Aptos Narrow"
-    r3._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-    r3.font.size = Pt(10)
-    r3.bold = True
+    run3 = pL.add_run(f"P.IVA {piva}")
+    run3.font.name = "Aptos Narrow"
+    run3._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+    run3.font.size = Pt(10)
+    run3.bold = True
 
     # Destra
-    pR = cell_right.paragraphs[0]
+    pR = hdr_right.paragraphs[0]
     pR.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    r4 = pR.add_run(f"ANNO {anno}\n")
-    r4.font.name = "Calibri"
-    r4.font.size = Pt(10)
+    run4 = pR.add_run(f"ANNO {anno}\n")
+    run4.font.name = "Calibri"
+    run4.font.size = Pt(10)
+    run4.bold = False
 
-    r5 = pR.add_run(f"Entrate dal {data_min} al {data_max}")
-    r5.font.name = "Aptos Narrow"
-    r5._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-    r5.font.size = Pt(10)
-    r5.bold = True
+    run5 = pR.add_run(f"Entrate dal {data_min_str} al {data_max_str}")
+    run5.font.name = "Aptos Narrow"
+    run5._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
+    run5.font.size = Pt(10)
+    run5.bold = True
 
-    # --- TABELLA DATI ---
-    table = doc.add_table(df.shape[0] + 1, df.shape[1])
+    # --- Tabella dati ---
+    table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = "Table Grid"
+    table.autofit = True
 
+    # Header
+    hdr_cells = table.rows[0].cells
     for j, col in enumerate(df.columns):
-        table.cell(0, j).text = col
+        hdr_cells[j].text = col
 
-    for i in range(df.shape[0]):
-        for j in range(df.shape[1]):
-            table.cell(i+1, j).text = str(df.iloc[i, j])
+    # Righe
+    for i in range(len(df)):
+        row = table.add_row().cells
+        for j, col in enumerate(df.columns):
+            val = df.iloc[i, j]
+            # Se è una delle colonne di importo originali, formatta €; altrimenti testo normale
+            if col in num_map.keys():
+                # recupera la colonna numerica interna se esiste
+                key = num_map[col]
+                if key in df.columns:
+                    row[j].text = fmt_eur(float(df.iloc[i][key]))
+                else:
+                    # fallback se non creata la colonna numerica
+                    row[j].text = as_text(val)
+            else:
+                row[j].text = as_text(val)
 
-    # --- TOTALI FINALI ---
-    doc.add_paragraph("\nTotali Finali:\n")
+    # --- Totali finali (pagina finale) ---
+    doc.add_paragraph()  # spazio
+    doc.add_paragraph("Totali Finali:")
+    if "tot_netto" in df.columns:
+        doc.add_paragraph(f"Totale Netto: {fmt_eur(df['tot_netto'].sum())} €")
+    if "tot_enpav" in df.columns:
+        doc.add_paragraph(f"Totale ENPAV: {fmt_eur(df['tot_enpav'].sum())} €")
+    if "tot_imponibile" in df.columns:
+        doc.add_paragraph(f"Totale Imponibile: {fmt_eur(df['tot_imponibile'].sum())} €")
+    if "tot_iva" in df.columns:
+        doc.add_paragraph(f"Totale IVA: {fmt_eur(df['tot_iva'].sum())} €")
+    if "tot_sconto" in df.columns:
+        doc.add_paragraph(f"Totale Sconto: {fmt_eur(df['tot_sconto'].sum())} €")
+    if "tot_rit" in df.columns:
+        doc.add_paragraph(f"Ritenuta d'acconto: {fmt_eur(df['tot_rit'].sum())} €")
+    if "totale" in df.columns:
+        doc.add_paragraph(f"Totale complessivo: {fmt_eur(df['totale'].sum())} €")
 
-    def add_total(label, col):
-        if col in df.columns:
-            doc.add_paragraph(f"{label}: {df[col].sum():,.2f} €")
-
-    add_total("Totale Netto", "tot_netto")
-    add_total("Totale ENPAV", "tot_enpav")
-    add_total("Totale Imponibile", "tot_imponibile")
-    add_total("Totale IVA", "tot_iva")
-    add_total("Totale Sconto", "tot_sconto")
-    add_total("Ritenuta d'acconto", "tot_rit")
-    add_total("Totale complessivo", "totale")
-
-    # --- ESPORTA ---
+    # --- Esporta Word ---
     buf = BytesIO()
     doc.save(buf)
     buf.seek(0)
 
-    st.download_button("⬇️ Scarica Registro IVA (Word)", buf, file_name=f"Registro_IVA_{anno}.docx")
+    st.download_button(
+        "⬇️ Scarica Registro IVA (Word)",
+        data=buf.getvalue(),
+        file_name=f"Registro_IVA_{anno}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
