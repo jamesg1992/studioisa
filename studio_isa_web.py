@@ -243,11 +243,13 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
-    # Train AI
+    # Train AI solo se non esiste già il modello
     if mode == "A":
-        vectorizer, model = train_ai_model(mem | new)
+        if model is None or vectorizer is None:
+            vectorizer, model = train_ai_model(mem | new)
     else:
-        vectorizer_B, model_B = train_ai_model(mem | new)
+        if model_B is None or vectorizer_B is None:
+            vectorizer_B, model_B = train_ai_model(mem | new)
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -364,7 +366,6 @@ def main():
                 st.rerun()
 
             st.session_state.idx = idx + 1
-            st.rerun()
 
         st.stop()
 
@@ -895,6 +896,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
