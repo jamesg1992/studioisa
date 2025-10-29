@@ -581,6 +581,8 @@ def render_registro_iva():
         # Layout orizzontale + margini
         section = doc.sections[0]
         section.orientation = WD_ORIENT.LANDSCAPE
+        section.start_type = WD_SECTION_START.NEW_PAGE
+        section.page_number_start = pagina_iniziale
         section.page_width = Inches(11.69)
         section.page_height = Inches(8.27)
         section.left_margin = Inches(0.4)
@@ -624,6 +626,13 @@ def render_registro_iva():
         r5.font.name = "Aptos Narrow"; r5._element.rPr.rFonts.set(qn("w:eastAsia"), "Aptos Narrow")
         r5.font.size = Pt(10); r5.bold = True
 
+        p_page = hdr_right.add_paragraph()
+        p_page.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+        fldSimple = OxmlElement('w:fldSimple')
+        fldSimple.set(qn('w:instr'), f'PAGE \\* MERGEFORMAT')
+        p_page._p.append(fldSimple)
+        
         r6 = pR.add_run(f"Pag. {pagina_iniziale}")
         r6.font.name = "Aptos Narrow"
         r6._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
@@ -692,6 +701,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
