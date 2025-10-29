@@ -20,7 +20,6 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.enum.section import WD_SECTION_START
 
-
 # =============== CONFIG =================
 st.set_page_config(page_title="Studio ISA e Registro IVA", layout="wide")
 
@@ -35,6 +34,16 @@ model = None
 vectorizer = None
 model_B = None
 vectorizer_B = None
+
+if "model_A" not in st.session_state:
+    st.session_state.model_A = None
+if "vectorizer_A" not in st.session_state:
+    st.session_state.vectorizer_A = None
+
+if "model_B" not in st.session_state:
+    st.session_state.model_B = None
+if "vectorizer_B" not in st.session_state:
+    st.session_state.vectorizer_B = None
 
 # =============== UTILS =================
 def norm(s):
@@ -245,11 +254,11 @@ def main():
 
     # Train AI solo se non esiste già il modello
     if mode == "A":
-        if model is None or vectorizer is None:
-            vectorizer, model = train_ai_model(mem | new)
+        if st.session_state.model_A is None:
+            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
     else:
-        if model_B is None or vectorizer_B is None:
-            vectorizer_B, model_B = train_ai_model(mem | new)
+        if st.session_state.model_B is None:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -366,6 +375,7 @@ def main():
                 st.rerun()
 
             st.session_state.idx = idx + 1
+            st.rerun()
 
         st.stop()
 
@@ -896,6 +906,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
