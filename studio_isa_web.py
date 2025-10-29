@@ -629,21 +629,21 @@ def render_registro_iva():
         p_page = hdr_right.add_paragraph()
         p_page.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
+        run_txt = p_page.add_run("Pag. ")
+        run_txt.font.name = "Aptos Narrow"
+        run_txt.font.size = Pt(10)
+
         fld_page = OxmlElement('w:fldSimple')
         fld_page.set(qn('w:instr'), 'PAGE')
         p_page._p.append(fld_page)
 
-        p_page.add_run(" di ")
-
+        run_txt2 = p_page.add_run(" di ")
+        run_txt2.font.name = "Aptos Narrow"
+        run_txt2.font.size = Pt(10)
+        
         fld_numpages = OxmlElement('w:fldSimple')
         fld_numpages.set(qn('w:instr'), 'NUMPAGES')
         p_page._p.append(fld_numpages)
-        
-        r6 = pR.add_run(f"Pag. {pagina_iniziale}")
-        r6.font.name = "Aptos Narrow"
-        r6._element.rPr.rFonts.set(qn('w:eastAsia'), "Aptos Narrow")
-        r6.font.size = Pt(10)
-        r6.bold = False
 
         doc.add_paragraph()
 
@@ -707,6 +707,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
