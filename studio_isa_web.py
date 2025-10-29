@@ -22,7 +22,7 @@ from docx.enum.section import WD_SECTION_START
 
 
 # =============== CONFIG =================
-st.set_page_config(page_title="Studio ISA - DrVeto + VetsGo", layout="wide")
+st.set_page_config(page_title="Studio ISA e Registro IVA", layout="wide")
 
 GITHUB_FILE_A = "dizionario_drveto.json"
 GITHUB_FILE_B = "dizionario_vetsgo.json"
@@ -193,7 +193,7 @@ def main():
         st.stop()
     global model, vectorizer, model_B, vectorizer_B
 
-    st.title("📊 Studio ISA – DrVeto + VetsGo")
+    st.title("📊 Studio ISA – DrVeto e VetsGo")
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
         st.stop()
@@ -464,7 +464,7 @@ def add_field_run(paragraph, field):
     r._r.append(fldChar2)
     
 def render_registro_iva():
-    st.header("📄 Registro IVA - Vendite")
+    st.header("📄 Registro IVA")
 
     # --- Dati intestazione (UI) ---
     struttura = st.text_input("Nome Struttura")
@@ -772,6 +772,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
