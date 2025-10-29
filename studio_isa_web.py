@@ -703,7 +703,7 @@ def render_registro_iva():
 
         doc.add_paragraph()
 
-        # Tabella
+                # Tabella
         rows, cols = df_display_str.shape
         table = doc.add_table(rows=rows + 1, cols=cols)
         table.style = "Table Grid"
@@ -731,51 +731,48 @@ def render_registro_iva():
 
         tot_netto = df_num.get("tot_netto", pd.Series([], dtype=float)).sum()
         tot_enpav = df_num.get("tot_enpav", pd.Series([], dtype=float)).sum()
-        tot_imp   = df_num.get("tot_imponibile", pd.Series([], dtype=float)).sum()  # <-- ora prende la colonna giusta
+        tot_imp   = df_num.get("tot_imponibile", pd.Series([], dtype=float)).sum()
         tot_iva   = df_num.get("tot_iva", pd.Series([], dtype=float)).sum()
         tot_sco   = df_num.get("tot_sconto", pd.Series([], dtype=float)).sum()
         tot_rit   = df_num.get("tot_rit", pd.Series([], dtype=float)).sum()
         tot_tot   = df_num.get("totale", pd.Series([], dtype=float)).sum()
 
-        p_title = doc.add_paragraph("Totali Finali:\n")
-        p_title.runs[0].bold = True
+        # Scrittura totali in grassetto
+        def add_bold_total(label, value):
+            p = doc.add_paragraph()
+            r1 = p.add_run(f"{label}: ")
+            r1.bold = True
+            r2 = p.add_run(f"{euro_it(value)} €")
+            r2.bold = True
 
-# --- Totali finali in grassetto ---
-def add_bold_total(label, value):
-    p = doc.add_paragraph()
-    run1 = p.add_run(f"{label}: ")
-    run1.bold = True
-    run2 = p.add_run(f"{euro_it(value)} €")
-    run2.bold = True
+        add_bold_total("Totale Netto", tot_netto)
+        add_bold_total("Totale ENPAV", tot_enpav)
+        add_bold_total("Totale Imponibile", tot_imp)
+        add_bold_total("Totale IVA", tot_iva)
+        add_bold_total("Totale Sconto", tot_sco)
+        add_bold_total("Ritenuta d'acconto", tot_rit)
+        add_bold_total("Totale complessivo", tot_tot)
 
-# Scrittura dei totali in fondo (fuori dalla funzione)
-add_bold_total("Totale Netto", tot_netto)
-add_bold_total("Totale ENPAV", tot_enpav)
-add_bold_total("Totale Imponibile", tot_imp)
-add_bold_total("Totale IVA", tot_iva)
-add_bold_total("Totale Sconto", tot_sco)
-add_bold_total("Ritenuta d'acconto", tot_rit)
-add_bold_total("Totale complessivo", tot_tot)
+        # Esporta DOCX
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        doc_bytes = buf.getvalue()
 
-# Incremento pagina iniziale (se serve per successive sezioni)
-pagina_iniziale += 1
-
-# Esporta DOCX
-buf = BytesIO()
-doc.save(buf)
-buf.seek(0)
-
+    # ---- FUORI DALLO SPINNER ----
     st.success("✅ Registro IVA generato.")
     st.download_button(
         "⬇️ Scarica Registro IVA (Word)",
-        data=buf.getvalue(),
+        data=doc_bytes,
         file_name=f"Registro_IVA_{anno}.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 
 
+
 if __name__ == "__main__":
     main()
+
 
 
 
