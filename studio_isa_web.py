@@ -26,6 +26,7 @@ st.set_page_config(page_title="Studio ISA e Registro IVA", layout="wide")
 
 GITHUB_FILE_A = "dizionario_drveto.json"
 GITHUB_FILE_B = "dizionario_vetsgo.json"
+CONFIG_FILE = "config_clinica.json"
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -103,7 +104,34 @@ def github_save_json(file_name, data):
         requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
     except:
         pass
+        
+def load_clinic_config():
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CONFIG_FILE}"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+        r = requests.get(url, headers=headers, timeout=12)
+        if r.status_code == 200:
+            raw = base64.b64decode(r.json()["content"]).decode("utf-8")
+            return json.loads(raw)
+    except:
+        pass
+    return {}
 
+def save_clinic_config(data: dict):
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CONFIG_FILE}"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+        r = requests.get(url, headers=headers, timeout=12)
+        sha = r.json().get("sha") if r.status_code == 200 else None
+
+        encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
+        payload = {"message": "Update clinic config", "content": encoded, "branch": "main"}
+        if sha:
+            payload["sha"] = sha
+
+        requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
+    except:
+        pass
 
 # =============== CATEGORY RULES =================
 RULES_A = {
@@ -466,6 +494,7 @@ def add_field_run(paragraph, field):
 def render_registro_iva():
     st.header("📄 Registro IVA")
 
+    config = load_clinic_config()
     # --- Dati intestazione (UI) ---
     struttura = st.text_input("Nome Struttura")
     via_ui = st.text_input("Via")
@@ -474,6 +503,20 @@ def render_registro_iva():
     provincia_ui = st.text_input("Provincia (sigla)", max_chars=2)
     piva = st.text_input("Partita IVA")
     pagina_iniziale = st.number_input("Numero pagina iniziale", min_value=1, max_value=999, value=1)
+
+    if st.button("💾 Salva dati struttura"):
+    new_cfg = {
+        "struttura": struttura,
+        "via": via_ui,
+        "cap": cap_ui,
+        "citta": citta_ui,
+        "provincia": provincia_ui.upper(),
+        "piva": piva,
+        "pagina_iniziale_default": int(pagina_iniziale),
+    }
+    save_clinic_config(new_cfg)
+    st.success("✅ Dati struttura salvati!")
+    st.rerun()
 
     file = st.file_uploader("Carica il file Registro IVA (Excel)", type=["xlsx", "xls"])
     if not file or not struttura:
@@ -772,6 +815,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
