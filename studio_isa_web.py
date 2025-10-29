@@ -421,6 +421,22 @@ def main():
         st.area_chart(area)
 
     # =============== REGISTRO IVA ===========
+def add_field_run(paragraph, field):
+    r = paragraph.add_run()
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = field
+
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'end')
+
+    r._r.append(fldChar1)
+    r._r.append(instrText)
+    r._r.append(fldChar2)
+    
 def render_registro_iva():
     st.header("📄 Registro IVA - Vendite")
 
@@ -638,17 +654,13 @@ def render_registro_iva():
         run_txt.font.name = "Aptos Narrow"
         run_txt.font.size = Pt(10)
 
-        fld_page = OxmlElement('w:fldSimple')
-        fld_page.set(qn('w:instr'), 'PAGE')
-        p_page._p.append(fld_page)
+        add_field_run(p_page, "PAGE")
 
         run_txt2 = p_page.add_run(" di ")
         run_txt2.font.name = "Aptos Narrow"
         run_txt2.font.size = Pt(10)
         
-        fld_numpages = OxmlElement('w:fldSimple')
-        fld_numpages.set(qn('w:instr'), 'NUMPAGES')
-        p_page._p.append(fld_numpages)
+        add_field_run(p_page, "NUMPAGES")
 
         doc.add_paragraph()
 
@@ -712,6 +724,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
