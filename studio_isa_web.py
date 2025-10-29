@@ -421,6 +421,39 @@ def main():
         st.area_chart(area)
 
     # =============== REGISTRO IVA ===========
+def add_simple_field(paragraph, instr: str):
+    """Inserisce un campo semplice (es. PAGE) nel paragrafo."""
+    r = paragraph.add_run()
+    fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin)
+    instr_text = OxmlElement('w:instrText'); instr_text.set(qn('xml:space'), 'preserve'); instr_text.text = instr; r._r.append(instr_text)
+    fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate'); r._r.append(fld_sep)
+    r_res = paragraph.add_run('1')  # placeholder
+    fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end'); r_res._r.append(fld_end)
+
+def add_lastpage_field(paragraph, start_at: int):
+    """Inserisce { = { NUMPAGES } + start_at - 1 } come campo formula nidificato."""
+    r = paragraph.add_run()
+    # inizio campo formula
+    fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin)
+
+    # "= "
+    instr_eq = OxmlElement('w:instrText'); instr_eq.set(qn('xml:space'), 'preserve'); instr_eq.text = '= '; r._r.append(instr_eq)
+
+    # campo nidificato NUMPAGES
+    fld_begin_inner = OxmlElement('w:fldChar'); fld_begin_inner.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin_inner)
+    instr_np = OxmlElement('w:instrText'); instr_np.set(qn('xml:space'), 'preserve'); instr_np.text = 'NUMPAGES'; r._r.append(instr_np)
+    fld_end_inner = OxmlElement('w:fldChar'); fld_end_inner.set(qn('w:fldCharType'), 'end'); r._r.append(fld_end_inner)
+
+    # " + <start_at> - 1 "
+    instr_plus = OxmlElement('w:instrText'); instr_plus.set(qn('xml:space'), 'preserve')
+    instr_plus.text = f' + {int(start_at)} - 1 '
+    r._r.append(instr_plus)
+
+    # separatore/risultato e fine campo
+    fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate'); r._r.append(fld_sep)
+    r_res = paragraph.add_run('0')  # placeholder
+    fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end'); r_res._r.append(fld_end)
+
 def add_field_run(paragraph, field):
     r = paragraph.add_run()
     fldChar1 = OxmlElement('w:fldChar')
@@ -614,6 +647,10 @@ def render_registro_iva():
 
         pgNumType.set(qn('w:start'), str(int(pagina_iniziale)))
 
+        settings = doc.settings._element
+        upd = OxmlElement('w:updateFields'); upd.set(qn('w:val'), 'true')
+        settings.append(upd)
+
         section.header.is_linked_to_previous = False
 
         # Stile base
@@ -666,6 +703,8 @@ def render_registro_iva():
         run_txt2.font.size = Pt(10)
         
         add_field_run(p_page, "NUMPAGES")
+
+        add_lastpage_field(p_page, pagina_iniziale)
 
         doc.add_paragraph()
 
@@ -729,6 +768,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
