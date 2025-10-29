@@ -629,9 +629,15 @@ def render_registro_iva():
         p_page = hdr_right.add_paragraph()
         p_page.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        fldSimple = OxmlElement('w:fldSimple')
-        fldSimple.set(qn('w:instr'), f'PAGE \\* MERGEFORMAT')
-        p_page._p.append(fldSimple)
+        fld_page = OxmlElement('w:fldSimple')
+        fld_page.set(qn('w:instr'), 'PAGE')
+        p_page._p.append(fld_page)
+
+        p_page.add_run(" di ")
+
+        fld_numpages = OxmlElement('w:fldSimple')
+        fld_numpages.set(qn('w:instr'), 'NUMPAGES')
+        p_page._p.append(fld_numpages)
         
         r6 = pR.add_run(f"Pag. {pagina_iniziale}")
         r6.font.name = "Aptos Narrow"
@@ -701,6 +707,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
