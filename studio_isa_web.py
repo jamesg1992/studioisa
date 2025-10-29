@@ -608,8 +608,9 @@ def render_registro_iva():
 
         section.start_type = WD_SECTION_START.NEW_PAGE
         section.header.is_linked_to_previous = False
-        section.restart_page_numbering = True
         section.page_number_start = int(pagina_iniziale)
+        section.restart_page_numbering = True
+
         
         # Stile base
         style = doc.styles["Normal"]
@@ -724,6 +725,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
