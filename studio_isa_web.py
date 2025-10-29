@@ -494,9 +494,12 @@ def add_field_run(paragraph, field):
 def render_registro_iva():
     st.header("📄 Registro IVA")
 
-    config = load_clinic_config()
-    # --- Dati intestazione (UI) ---
-    struttura = st.text_input("Nome Struttura")
+    config_all = load_clinic_config()
+    cliniche = list(config_all.keys())
+clinica_scelta = st.selectbox("Seleziona Clinica", ["+ Nuova Clinica"] + cliniche)
+
+if clinica_scelta == "+ Nuova Clinica":
+    struttura = st.text_input("Nome Struttura (Nuova)")
     via_ui = st.text_input("Via")
     cap_ui = st.text_input("CAP")
     citta_ui = st.text_input("Città")
@@ -504,19 +507,45 @@ def render_registro_iva():
     piva = st.text_input("Partita IVA")
     pagina_iniziale = st.number_input("Numero pagina iniziale", min_value=1, max_value=999, value=1)
 
-    if st.button("💾 Salva dati struttura"):
-    new_cfg = {
-        "struttura": struttura,
-        "via": via_ui,
-        "cap": cap_ui,
-        "citta": citta_ui,
-        "provincia": provincia_ui.upper(),
-        "piva": piva,
-        "pagina_iniziale_default": int(pagina_iniziale),
-    }
-    save_clinic_config(new_cfg)
-    st.success("✅ Dati struttura salvati!")
-    st.rerun()
+    if st.button("➕ Aggiungi Clinica"):
+        config_all[struttura] = {
+            "struttura": struttura,
+            "via": via_ui,
+            "cap": cap_ui,
+            "citta": citta_ui,
+            "provincia": provincia_ui.upper(),
+            "piva": piva,
+            "pagina_iniziale_default": int(pagina_iniziale)
+        }
+        save_clinic_config(config_all)
+        st.success("✅ Nuova clinica aggiunta!")
+        st.rerun()
+
+    else:
+        cfg = config_all[clinica_scelta]
+
+        struttura = st.text_input("Nome Struttura", cfg.get("struttura",""))
+        via_ui = st.text_input("Via", cfg.get("via",""))
+        cap_ui = st.text_input("CAP", cfg.get("cap",""))
+        citta_ui = st.text_input("Città", cfg.get("citta",""))
+        provincia_ui = st.text_input("Provincia (sigla)", max_chars=2, value=cfg.get("provincia",""))
+        piva = st.text_input("Partita IVA", cfg.get("piva",""))
+        pagina_iniziale = st.number_input("Numero pagina iniziale", min_value=1, max_value=999,
+                                      value=cfg.get("pagina_iniziale_default",1))
+
+        if st.button("💾 Salva modifiche"):
+            config_all[clinica_scelta] = {
+            "struttura": struttura,
+            "via": via_ui,
+            "cap": cap_ui,
+            "citta": citta_ui,
+            "provincia": provincia_ui.upper(),
+            "piva": piva,
+            "pagina_iniziale_default": int(pagina_iniziale)
+        }
+        save_clinic_config(config_all)
+        st.success("✅ Modifiche salvate!")
+        st.rerun()
 
     file = st.file_uploader("Carica il file Registro IVA (Excel)", type=["xlsx", "xls"])
     if not file or not struttura:
@@ -815,6 +844,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
