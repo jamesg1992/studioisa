@@ -421,38 +421,31 @@ def main():
         st.area_chart(area)
 
     # =============== REGISTRO IVA ===========
-def add_simple_field(paragraph, instr: str):
-    """Inserisce un campo semplice (es. PAGE) nel paragrafo."""
-    r = paragraph.add_run()
-    fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin)
-    instr_text = OxmlElement('w:instrText'); instr_text.set(qn('xml:space'), 'preserve'); instr_text.text = instr; r._r.append(instr_text)
-    fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate'); r._r.append(fld_sep)
-    r_res = paragraph.add_run('1')  # placeholder
-    fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end'); r_res._r.append(fld_end)
+def add_simple_field(p, instr):
+    r = p.add_run()
+    for t, text in (('begin', ''), ('instrText', instr), ('separate', ''), ('end', '')):
+        el = OxmlElement('w:fldChar') if t != 'instrText' else OxmlElement('w:instrText')
+        if t != 'instrText':
+            el.set(qn('w:fldCharType'), t)
+        else:
+            el.set(qn('xml:space'), 'preserve'); el.text = text
+        r._r.append(el)
 
-def add_lastpage_field(paragraph, start_at: int):
-    """Inserisce { = { NUMPAGES } + start_at - 1 } come campo formula nidificato."""
-    r = paragraph.add_run()
-    # inizio campo formula
-    fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin)
-
-    # "= "
-    instr_eq = OxmlElement('w:instrText'); instr_eq.set(qn('xml:space'), 'preserve'); instr_eq.text = '= '; r._r.append(instr_eq)
-
-    # campo nidificato NUMPAGES
-    fld_begin_inner = OxmlElement('w:fldChar'); fld_begin_inner.set(qn('w:fldCharType'), 'begin'); r._r.append(fld_begin_inner)
-    instr_np = OxmlElement('w:instrText'); instr_np.set(qn('xml:space'), 'preserve'); instr_np.text = 'NUMPAGES'; r._r.append(instr_np)
-    fld_end_inner = OxmlElement('w:fldChar'); fld_end_inner.set(qn('w:fldCharType'), 'end'); r._r.append(fld_end_inner)
-
-    # " + <start_at> - 1 "
-    instr_plus = OxmlElement('w:instrText'); instr_plus.set(qn('xml:space'), 'preserve')
-    instr_plus.text = f' + {int(start_at)} - 1 '
-    r._r.append(instr_plus)
-
-    # separatore/risultato e fine campo
-    fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate'); r._r.append(fld_sep)
-    r_res = paragraph.add_run('0')  # placeholder
-    fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end'); r_res._r.append(fld_end)
+def add_lastpage_field(p, start_at):
+    r = p.add_run()
+    # { =
+    el = OxmlElement('w:fldChar'); el.set(qn('w:fldCharType'), 'begin'); r._r.append(el)
+    it = OxmlElement('w:instrText'); it.set(qn('xml:space'), 'preserve'); it.text = '= '; r._r.append(it)
+    # { NUMPAGES }
+    e1 = OxmlElement('w:fldChar'); e1.set(qn('w:fldCharType'), 'begin'); r._r.append(e1)
+    it2 = OxmlElement('w:instrText'); it2.set(qn('xml:space'), 'preserve'); it2.text = 'NUMPAGES'; r._r.append(it2)
+    e2 = OxmlElement('w:fldChar'); e2.set(qn('w:fldCharType'), 'end'); r._r.append(e2)
+    # + offset -1
+    it3 = OxmlElement('w:instrText'); it3.set(qn('xml:space'), 'preserve')
+    it3.text = f' + {int(start_at)} - 1 '; r._r.append(it3)
+    e3 = OxmlElement('w:fldChar'); e3.set(qn('w:fldCharType'), 'separate'); r._r.append(e3)
+    p.add_run('0')
+    e4 = OxmlElement('w:fldChar'); e4.set(qn('w:fldCharType'), 'end'); p._p.append(e4)
 
 def add_field_run(paragraph, field):
     r = paragraph.add_run()
@@ -692,18 +685,9 @@ def render_registro_iva():
         p_page = hdr_right.add_paragraph()
         p_page.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        run_txt = p_page.add_run("Pag. ")
-        run_txt.font.name = "Aptos Narrow"
-        run_txt.font.size = Pt(10)
-
-        add_field_run(p_page, "PAGE")
-
-        run_txt2 = p_page.add_run(" di ")
-        run_txt2.font.name = "Aptos Narrow"
-        run_txt2.font.size = Pt(10)
-        
-        add_field_run(p_page, "NUMPAGES")
-
+        r = p_page.add_run("Pag. "); r.font.name="Aptos Narrow"; r.font.size=Pt(10)
+        add_simple_field(p_page, "PAGE")
+        r2 = p_page.add_run(" di "); r2.font.name="Aptos Narrow"; r2.font.size=Pt(10)
         add_lastpage_field(p_page, pagina_iniziale)
 
         doc.add_paragraph()
@@ -768,6 +752,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
