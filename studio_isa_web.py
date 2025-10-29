@@ -693,6 +693,52 @@ def render_registro_iva():
 
     # Mostra anteprima tabella
     st.dataframe(df_display, use_container_width=True)
+        # --- CONTROLLO ANOMALIE ----------------------------------------------------
+    warnings = []
+
+    # 1) IVA zero ma imponibile > 0
+    if "Totale imponibile" in df_display.columns and "Totale IVA" in df_display.columns:
+        imp = pd.to_numeric(df_display["Totale imponibile"], errors="coerce").fillna(0)
+        iva = pd.to_numeric(df_display["Totale IVA"], errors="coerce").fillna(0)
+        mask = (imp > 0) & (iva == 0)
+        if mask.any():
+            warnings.append(f"➡️ {mask.sum()} righe hanno imponibile > 0 ma IVA = 0 (possibile aliquota mancante).")
+
+    # 2) Totale minore di imponibile + iva
+    if "Totale" in df_display.columns:
+        tot = pd.to_numeric(df_display["Totale"], errors="coerce").fillna(0)
+        calc = imp + iva
+        mask2 = tot < (calc - 0.01)  # tolleranza 1 cent
+        if mask2.any():
+            warnings.append(f"➡️ {mask2.sum()} righe hanno Totale più basso della somma Imponibile + IVA.")
+
+    # 3) PIVA vuota → possibile privato (solo informativo)
+    if "P. IVA" in df_display.columns:
+        mask3 = df_display["P. IVA"].astype(str).str.strip().eq("")
+        if mask3.any():
+            warnings.append(f"ℹ️ {mask3.sum()} righe senza Partita IVA (probabili privati).")
+
+    # 4) CAP non numerico
+    if "CAP" in df_display.columns:
+        cap_wrong = ~df_display["CAP"].astype(str).str.match(r"^\d{4,5}$")
+        if cap_wrong.any():
+            warnings.append(f"⚠️ {cap_wrong.sum()} CAP non hanno un formato valido (es: 40121).")
+
+    # 5) Date mancanti o non valide
+    if "Data" in df_display.columns:
+        dt = pd.to_datetime(df_display["Data"], dayfirst=True, errors="coerce")
+        if dt.isna().any():
+            warnings.append(f"⚠️ {dt.isna().sum()} righe hanno una data non valida.")
+
+    # ---- Mostra riepilogo ------------------------------------------------------
+    if warnings:
+        st.warning(
+            "⚠️ **Controllo Anomalie nel Registro IVA**:\n\n" +
+            "\n".join(warnings) +
+            "\n\nPuoi comunque procedere con la generazione del file."
+        )
+    else:
+        st.success("✅ Nessuna anomalia rilevata.")
 
     if not st.button("🧾 Genera Registro IVA (DOCX)"):
         return
@@ -849,6 +895,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
