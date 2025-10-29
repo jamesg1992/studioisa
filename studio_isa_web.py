@@ -252,14 +252,6 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
-    # Train AI solo se non esiste già il modello
-    if mode == "A":
-        if st.session_state.model_A is None:
-            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-    else:
-        if st.session_state.model_B is None:
-            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
-
     # ===== PROCESS A =====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
@@ -351,33 +343,35 @@ def main():
         if idx >= len(pending):
             idx = 0
             st.session_state.idx = 0
-        term = pending[idx]
-        opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
-        last = st.session_state.get("last_cat", opts[0])
-        default_index = opts.index(last) if last in opts else 0
 
-        st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
-        cat_sel = st.selectbox("Categoria:", opts, index=default_index)
+    term = pending[idx]
+    opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
 
-        if st.button("✅ Salva e prossimo"):
-            new[norm(term)] = cat_sel
-            st.session_state.new = new
-            st.session_state.last_cat = cat_sel
+    last = st.session_state.get("last_cat", opts[0])
+    default_index = opts.index(last) if last in opts else 0
 
-            if idx + 1 >= len(pending):
-                # Fine: salva su GitHub
-                mem.update(new)
-                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
-                st.session_state.mem = mem
-                st.session_state.new = {}
-                st.session_state.idx = 0
-                st.success("🎉 Tutto classificato e salvato su GitHub!")
-                st.rerun()
+    st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
+    cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
-            st.session_state.idx = idx + 1
-            st.rerun()
+    if st.button("✅ Salva e prossimo"):
+        new[norm(term)] = cat_sel
+        st.session_state.new = new
+        st.session_state.last_cat = cat_sel
+        st.session_state.idx = idx + 1
+        st.rerun()   # <--- 🔥 ritorno immediato senza ricalcolare nulla
 
-        st.stop()
+    if idx + 1 >= len(pending):
+        # Fine → aggiorna definitivamente solo ora
+        mem.update(new)
+        github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
+        st.session_state.mem = mem
+        st.session_state.new = {}
+        st.session_state.idx = 0
+        st.success("🎉 Tutto classificato e salvato sul cloud!")
+        st.rerun()
+
+    st.stop()
+
 
     # ===== REPORT =====
     df = df.drop(columns=["_clean"], errors="ignore")
@@ -906,6 +900,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
