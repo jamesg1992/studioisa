@@ -582,7 +582,6 @@ def render_registro_iva():
         # Layout orizzontale + margini
         section = doc.sections[0]
         section.orientation = WD_ORIENT.LANDSCAPE
-        section.start_type = WD_SECTION_START.NEW_PAGE
         section.page_number_start = pagina_iniziale
         section.page_width = Inches(11.69)
         section.page_height = Inches(8.27)
@@ -592,8 +591,9 @@ def render_registro_iva():
         section.bottom_margin = Inches(0.5)
 
         section.start_type = WD_SECTION_START.NEW_PAGE
+        section.header.is_linked_to_previous = False
         section.restart_page_numbering = True
-        section.page_number_start = pagina_iniziale
+        section.page_number_start = int(pagina_iniziale)
         
         # Stile base
         style = doc.styles["Normal"]
@@ -712,6 +712,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
