@@ -565,12 +565,22 @@ def render_registro_iva():
     df_display = df_raw.loc[:, cols_presenti].copy()
 
     # --- Aggiungi provincia nella colonna "Città" ---
+    has_prov_in_file = find_col_by_norm(df_raw, "Provincia")
+
     if "Città" in df_display.columns:
-        if provincia_ui:
-            df_display["Città"] = (
-                df_display["Città"].astype(str).str.strip()
-                + " (" + provincia_ui.upper().strip() + ")"
-            )
+        citta_clean = df_display["Città"].astype(str).str.strip()
+
+        if has_prov_in_file:
+            prov_col = find_col_by_norm(df_raw, "Provincia")
+            prov = df_raw[prov_col].astype(str).str.strip().str.upper()
+            df_display["Città"] = citta_clean + " (" + prov + ")"
+
+        else:
+            # Provincia NON nel file → usa quella inserita dall’utente, se presente
+            if provincia_ui:
+                df_display["Città"] = citta_clean + " (" + provincia_ui.upper().strip() + ")"
+            else:
+                df_display["Città"] = citta_clean
 
     # CAP pulito (evita “40.033,00” o simili)
     if "CAP" in df_display.columns:
@@ -752,6 +762,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
