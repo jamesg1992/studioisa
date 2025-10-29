@@ -606,12 +606,16 @@ def render_registro_iva():
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.5)
 
-        section.start_type = WD_SECTION_START.NEW_PAGE
-        section.header.is_linked_to_previous = False
-        section.page_number_start = int(pagina_iniziale)
-        section.restart_page_numbering = True
+        sectPr = section._sectPr
+        pgNumType = sectPr.find(qn('w:pgNumType'))
+        if pgNumType is None:
+            pgNumType = OxmlElement('w:pgNumType')
+            sectPr.append(pgNumType)
 
-        
+        pgNumType.set(qn('w:start'), str(int(pagina_iniziale)))
+
+        section.header.is_linked_to_previous = False
+
         # Stile base
         style = doc.styles["Normal"]
         style.font.name = "Aptos Narrow"
@@ -725,6 +729,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
