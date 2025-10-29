@@ -563,6 +563,7 @@ def render_registro_iva():
         return
 
     df_display = df_raw.loc[:, cols_presenti].copy()
+    df_display = df_display.iloc[::-1].reset_index(drop=True)
 
     # --- Aggiungi provincia nella colonna "Città" ---
     has_prov_in_file = find_col_by_norm(df_raw, "Provincia")
@@ -736,14 +737,23 @@ def render_registro_iva():
         tot_rit   = df_num.get("tot_rit", pd.Series([], dtype=float)).sum()
         tot_tot   = df_num.get("totale", pd.Series([], dtype=float)).sum()
 
-        doc.add_paragraph("Totali Finali:\n")
-        doc.add_paragraph(f"Totale Netto: {euro_it(tot_netto)} €")
-        doc.add_paragraph(f"Totale ENPAV: {euro_it(tot_enpav)} €")
-        doc.add_paragraph(f"Totale Imponibile: {euro_it(tot_imp)} €")
-        doc.add_paragraph(f"Totale IVA: {euro_it(tot_iva)} €")
-        doc.add_paragraph(f"Totale Sconto: {euro_it(tot_sco)} €")
-        doc.add_paragraph(f"Ritenuta d'acconto: {euro_it(tot_rit)} €")
-        doc.add_paragraph(f"Totale complessivo: {euro_it(tot_tot)} €")
+        p_title = doc.add_paragraph("Totali Finali:\n")
+        p_title.runs[0].bold = True
+
+def add_bold_total(label, value):
+    p = doc.add_paragraph()
+    run1 = p.add_run(f"{label}: ")
+    run1.bold = True
+    run2 = p.add_run(f"{euro_it(value)} €")
+    run2.bold = True
+
+    add_bold_total("Totale Netto", tot_netto)
+    add_bold_total("Totale ENPAV", tot_enpav)
+    add_bold_total("Totale Imponibile", tot_imp)
+    add_bold_total("Totale IVA", tot_iva)
+    add_bold_total("Totale Sconto", tot_sco)
+    add_bold_total("Ritenuta d'acconto", tot_rit)
+    add_bold_total("Totale complessivo", tot_tot)
 
         pagina_iniziale += 1
         # Esporta DOCX
@@ -762,6 +772,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
