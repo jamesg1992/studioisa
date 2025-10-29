@@ -740,6 +740,7 @@ def render_registro_iva():
         p_title = doc.add_paragraph("Totali Finali:\n")
         p_title.runs[0].bold = True
 
+# --- Totali finali in grassetto ---
 def add_bold_total(label, value):
     p = doc.add_paragraph()
     run1 = p.add_run(f"{label}: ")
@@ -747,19 +748,22 @@ def add_bold_total(label, value):
     run2 = p.add_run(f"{euro_it(value)} €")
     run2.bold = True
 
-    add_bold_total("Totale Netto", tot_netto)
-    add_bold_total("Totale ENPAV", tot_enpav)
-    add_bold_total("Totale Imponibile", tot_imp)
-    add_bold_total("Totale IVA", tot_iva)
-    add_bold_total("Totale Sconto", tot_sco)
-    add_bold_total("Ritenuta d'acconto", tot_rit)
-    add_bold_total("Totale complessivo", tot_tot)
+# Scrittura dei totali in fondo (fuori dalla funzione)
+add_bold_total("Totale Netto", tot_netto)
+add_bold_total("Totale ENPAV", tot_enpav)
+add_bold_total("Totale Imponibile", tot_imp)
+add_bold_total("Totale IVA", tot_iva)
+add_bold_total("Totale Sconto", tot_sco)
+add_bold_total("Ritenuta d'acconto", tot_rit)
+add_bold_total("Totale complessivo", tot_tot)
 
-        pagina_iniziale += 1
-        # Esporta DOCX
-        buf = BytesIO()
-        doc.save(buf)
-        buf.seek(0)
+# Incremento pagina iniziale (se serve per successive sezioni)
+pagina_iniziale += 1
+
+# Esporta DOCX
+buf = BytesIO()
+doc.save(buf)
+buf.seek(0)
 
     st.success("✅ Registro IVA generato.")
     st.download_button(
@@ -772,6 +776,7 @@ def add_bold_total(label, value):
 
 if __name__ == "__main__":
     main()
+
 
 
 
