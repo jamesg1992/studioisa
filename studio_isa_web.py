@@ -590,6 +590,10 @@ def render_registro_iva():
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.5)
 
+        section.start_type = WD_SECTION_START.NEW_PAGE
+        section.restart_page_numbering = True
+        section.page_number_start = pagina_iniziale
+        
         # Stile base
         style = doc.styles["Normal"]
         style.font.name = "Aptos Narrow"
@@ -707,6 +711,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
