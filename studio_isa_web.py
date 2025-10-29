@@ -182,7 +182,7 @@ def classify_B(prest, mem):
 
 
 # =============== SIDEBAR =================
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Dashboard Annuale", "Registro IVA"])
+page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Registro IVA"])
 auto_thresh = st.sidebar.slider("Soglia auto-apprendimento (AI)", 0.50, 0.99, 0.85, 0.01)
 st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
 
@@ -772,6 +772,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
