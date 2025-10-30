@@ -173,6 +173,7 @@ def train_ai_model(dictionary):
     m.fit(X, labels)
     return vec, m
 
+
 # =============== CLASSIFICATION (helpers) =================
 def classify_A(desc, fam, mem):
     """Rule-based + memory + (optional) AI suggestion (used only in auto-pass)."""
@@ -246,15 +247,9 @@ def main():
 
     # Train AI
     if mode == "A":
-        if "vectorizer_A" not in st.session_state or st.session_state.vectorizer_A is None:
-            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_A
-        model = st.session_state.model_A
+        vectorizer, model = train_ai_model(mem | new)
     else:
-        if "vectorizer_B" not in st.session_state or st.session_state.vectorizer_B is None:
-            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
-        vectorizer_B = st.session_state.vectorizer_B
-        model_B = st.session_state.model_B
+        vectorizer_B, model_B = train_ai_model(mem | new)
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -274,7 +269,7 @@ def main():
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
         auto_added_now = []
-        if model is not None and vectorizer is not None and candidates:
+        if model and vectorizer and candidates:
             X = vectorizer.transform(candidates)
             probs = model.predict_proba(X)
             preds = model.classes_[probs.argmax(axis=1)]
@@ -902,5 +897,3 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
-
-
