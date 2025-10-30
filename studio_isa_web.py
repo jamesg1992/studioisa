@@ -239,6 +239,13 @@ def main():
     if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
         st.session_state.df = load_excel(file)
         st.session_state.last_file_name = file.name
+        st.session_state.model_A = None
+        st.session_state.vectorizer_A = None
+        st.session_state.model_B = None
+        st.session_state.vectorizer_B = None
+        st.session_state.idx = 0
+        st.session_state.new = {}
+        st.session_state.auto_added = []
         df = st.session_state.df.copy()
         df = load_excel(file)
         st.session_state.df = df
@@ -253,6 +260,18 @@ def main():
     mem = st.session_state.mem
     new = st.session_state.new
     mode = st.session_state.mode
+
+    # --- Train AI per modello corretto (A o B) ---
+    if mode == "A":
+        if st.session_state.vectorizer_A is None or st.session_state.model_A is None:
+            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+    vectorizer = st.session_state.vectorizer_A
+    model = st.session_state.model_A
+    else:
+        if st.session_state.vectorizer_B is None or st.session_state.model_B is None:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
+    vectorizer = st.session_state.vectorizer_B
+    model = st.session_state.model_B
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -903,6 +922,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
