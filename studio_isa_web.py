@@ -246,9 +246,15 @@ def main():
 
     # Train AI
     if mode == "A":
-        vectorizer, model = train_ai_model(mem | new)
+        if "vectorizer_A" not in st.session_state or st.session_state.vectorizer_A is None:
+            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+        vectorizer = st.session_state.vectorizer_A
+        model = st.session_state.model_A
     else:
-        vectorizer_B, model_B = train_ai_model(mem | new)
+        if "vectorizer_B" not in st.session_state or st.session_state.vectorizer_B is None:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
+        vectorizer_B = st.session_state.vectorizer_B
+        model_B = st.session_state.model_B
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -268,7 +274,7 @@ def main():
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
         auto_added_now = []
-        if model and vectorizer and candidates:
+        if model is not None and vectorizer is not None and candidates:
             X = vectorizer.transform(candidates)
             probs = model.predict_proba(X)
             preds = model.classes_[probs.argmax(axis=1)]
@@ -896,4 +902,5 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
