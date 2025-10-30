@@ -237,7 +237,10 @@ def main():
         st.stop()
 
     # Load file only once
-    if "df" not in st.session_state:
+    if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
+        st.session_state.df = load_excel(file)
+        st.session_state.last_file_name = file.name
+        df = st.session_state.df.copy()
         df = load_excel(file)
         st.session_state.df = df
         mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
@@ -336,6 +339,7 @@ def main():
 
     # ===== LEARNING INTERFACE (manuale per ciò che resta) =====
     learned = {norm(k) for k in (mem | new).keys()}
+    df["_clean"] = df[base].astype(str).map(norm)
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
@@ -900,6 +904,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
