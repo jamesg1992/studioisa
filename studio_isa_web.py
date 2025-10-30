@@ -310,9 +310,9 @@ def main():
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
         auto_added_now = []
-        if model_B and vectorizer_B and candidates:
-            X = vectorizer_B.transform(candidates)
-            probs = model_B.predict_proba(X)
+        if model and vectorizer and candidates:
+            X = vectorizer.transform(candidates)
+            probs = model.predict_proba(X)
             preds = model_B.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
             for t, p, c in zip(candidates, preds, confs):
@@ -905,5 +905,6 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
