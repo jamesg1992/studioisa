@@ -184,7 +184,16 @@ def train_ai_model(dictionary):
 # =============== CLASSIFICATION (helpers) =================
 def classify_A(desc, fam, mem):
     """Rule-based + memory + (optional) AI suggestion (used only in auto-pass)."""
-    global model, vectorizer
+    if mode == "A":
+        if st.session_state.vectorizer_A is None or st.session_state.model_A is None:
+        st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+    vectorizer = st.session_state.vectorizer_A
+    model = st.session_state.model_A
+    else:
+        if st.session_state.vectorizer_B is None or st.session_state.model_B is None:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
+    vectorizer = st.session_state.vectorizer_B
+    model = st.session_state.model_B
     d = norm(desc)
 
     fam_s = norm(fam)
@@ -237,7 +246,7 @@ def main():
         st.stop()
 
     # Load file only once
-    if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
+    if "df" not in st.session_state:
         st.session_state.df = load_excel(file)
         st.session_state.last_file_name = file.name
         df = st.session_state.df.copy()
@@ -904,6 +913,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
