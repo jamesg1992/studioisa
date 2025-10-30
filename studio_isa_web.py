@@ -227,17 +227,16 @@ def main():
     if not file:
         st.stop()
 
-    # Load file only once per file caricato
-    if "df" not in st.session_state or st.session_state.get("last_file") != file.name:
-        st.session_state.df = load_excel(file)
-        st.session_state.last_file = file.name
-
-        # reset solo quando cambia file
-        st.session_state.mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in st.session_state.df.columns) else "A"
-        st.session_state.mem = github_load_json(GITHUB_FILE_A if st.session_state.mode=="A" else GITHUB_FILE_B)
+    # Load file only once
+    if "df" not in st.session_state:
+        df = load_excel(file)
+        st.session_state.df = df
+        mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
+        st.session_state.mode = mode
+        st.session_state.mem = github_load_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
         st.session_state.new = {}
         st.session_state.idx = 0
-        st.session_state.auto_added = []
+        st.session_state.auto_added = []  # [(term, cat, conf)]
 
     df = st.session_state.df.copy()
     mem = st.session_state.mem
@@ -246,15 +245,10 @@ def main():
 
     # Train AI
     if mode == "A":
-        if "vectorizer_A" not in st.session_state or "model_A" not in st.session_state:
-            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_A
-        model = st.session_state.model_A
+        vectorizer, model = train_ai_model(mem | new)
     else:
-        if "vectorizer_B" not in st.session_state or "model_B" not in st.session_state:
-            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_B
-        model = st.session_state.model_B
+        vectorizer_B, model_B = train_ai_model(mem | new)
+
     # ===== PROCESS A =====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
@@ -304,16 +298,16 @@ def main():
 
         base = prest
 
-    # ========== AUTO APPRENDIMENTO PASS (USA IL MODELLO UNICO) ==========
+        # ========== AUTO APPRENDIMENTO PASS ==========
         learned = {norm(k) for k in (mem | new).keys()}
         df["_clean"] = df[base].astype(str).map(norm)
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
         auto_added_now = []
-        if model and vectorizer and candidates:
-            X = vectorizer.transform(candidates)
-            probs = model.predict_proba(X)
-            preds = model.classes_[probs.argmax(axis=1)]
+        if model_B and vectorizer_B and candidates:
+            X = vectorizer_B.transform(candidates)
+            probs = model_B.predict_proba(X)
+            preds = model_B.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
             for t, p, c in zip(candidates, preds, confs):
                 if float(c) >= auto_thresh:
@@ -324,8 +318,8 @@ def main():
             st.session_state.new = new
             st.session_state.auto_added.extend(auto_added_now)
 
-    df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem | new))
-
+        # Classify rows (using classify_B that includes memory & rules)
+        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem | new))
 
     # Remove Privato / Professionista
     df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
@@ -357,10 +351,6 @@ def main():
         if st.button("✅ Salva e prossimo"):
             new[norm(term)] = cat_sel
             st.session_state.new = new
-            if mode == "A":
-                st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-            else:
-                st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
             st.session_state.last_cat = cat_sel
 
             if idx + 1 >= len(pending):
@@ -905,8 +895,3 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
