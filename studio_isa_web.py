@@ -235,10 +235,12 @@ def main():
     if not file:
         st.stop()
 
-    # Load file only once
+        # Load file only once
     if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
         st.session_state.df = load_excel(file)
         st.session_state.last_file_name = file.name
+
+        # Reset AI models and learning state
         st.session_state.model_A = None
         st.session_state.vectorizer_A = None
         st.session_state.model_B = None
@@ -246,29 +248,26 @@ def main():
         st.session_state.idx = 0
         st.session_state.new = {}
         st.session_state.auto_added = []
-        df = st.session_state.df.copy()
-        df = load_excel(file)
-        st.session_state.df = df
+
+        df = st.session_state.df
         mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
         st.session_state.mode = mode
         st.session_state.mem = github_load_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
-        st.session_state.new = {}
-        st.session_state.idx = 0
-        st.session_state.auto_added = []  # [(term, cat, conf)]
 
+    # Use session state references
     df = st.session_state.df.copy()
     mem = st.session_state.mem
     new = st.session_state.new
     mode = st.session_state.mode
 
-        # --- Train AI per modello corretto (A o B) ---
+    # --- Train AI correct model (A or B), using updated memory ---
     if mode == "A":
-        if st.session_state.vectorizer_A is None or st.session_state.model_A is None:
+        if st.session_state.vectorizer_A is None or st.session_state.model_A is None or new:
             st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
         vectorizer = st.session_state.vectorizer_A
         model = st.session_state.model_A
     else:
-        if st.session_state.vectorizer_B is None or st.session_state.model_B is None:
+        if st.session_state.vectorizer_B is None or st.session_state.model_B is None or new:
             st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
         vectorizer = st.session_state.vectorizer_B
         model = st.session_state.model_B
@@ -922,6 +921,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
