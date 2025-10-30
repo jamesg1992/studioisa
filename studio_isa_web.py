@@ -157,16 +157,21 @@ ORDER_B = list(RULES_B.keys()) + ["Totale"]
 
 # =============== AI TRAIN =================
 def train_ai_model(dictionary):
+    dictionary = {k: v for k, v in dictionary.items() if k.strip() != ""}
     if not dictionary:
         return None, None
     texts = list(dictionary.keys())
     labels = list(dictionary.values())
     vec = TfidfVectorizer(lowercase=True)
-    X = vec.fit_transform(texts)
+    try:
+        X = vec.fit_transform(texts)
+    except ValueError:
+        return None, None
+    if len(set(labels)) <= 1:
+        return None, None
     m = MultinomialNB()
     m.fit(X, labels)
     return vec, m
-
 
 # =============== CLASSIFICATION (helpers) =================
 def classify_A(desc, fam, mem):
