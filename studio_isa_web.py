@@ -374,25 +374,32 @@ def main():
     st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
     cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
-    if st.button("✅ Salva e prossimo"):
-        new[norm(term)] = cat_sel
-        st.session_state.new = new
-        st.session_state.last_cat = cat_sel
-        st.session_state.idx = idx + 1
-        st.rerun()   # <--- 🔥 ritorno immediato senza ricalcolare nulla
+    col1, col2 = st.columns(2)
 
-    if idx + 1 >= len(pending):
-        # Fine → aggiorna definitivamente solo ora
-        mem.update(new)
-        github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
-        st.session_state.mem = mem
-        st.session_state.new = {}
-        st.session_state.idx = 0
-        st.success("🎉 Tutto classificato e salvato sul cloud!")
-        st.rerun()
+    with col1:
+        if st.button("✅ Salva e prossimo", key="save_next", use_container_width=True):
+            new[norm(term)] = cat_sel
+            st.session_state.new = new
+            st.session_state.last_cat = cat_sel
 
+            if st.session_state.idx + 1 < len(pending):
+                st.session_state.idx += 1
+            else:
+                # Fine → salviamo su GitHub SENZA ricaricare la schermata
+                mem.update(new)
+                github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
+                st.session_state.mem = mem
+                st.session_state.new = {}
+                st.session_state.idx = 0
+                st.success("🎉 Tutto classificato e salvato sul cloud!")
+
+    with col2:
+        if st.button("⏩ Salta", key="skip_next", use_container_width=True):
+            if st.session_state.idx + 1 < len(pending):
+                st.session_state.idx += 1
+            else:
+                st.session_state.idx = 0  # ricomincia
     st.stop()
-
 
     # ===== REPORT =====
     df = df.drop(columns=["_clean"], errors="ignore")
@@ -921,6 +928,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
