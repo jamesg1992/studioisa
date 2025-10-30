@@ -275,8 +275,8 @@ def main():
             preds = model.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
             for t, p, c in zip(candidates, preds, confs):
-                if float(c) >= auto_thresh:
-                    new[t] = p
+                SAFE_CONFIDENCE = max(auto_thresh, 0.95)
+                if float(c) >= SAFE_CONFIDENCE:
                     auto_added_now.append((t, p, float(c)))
 
         if auto_added_now:
@@ -332,10 +332,19 @@ def main():
 
     # ===== SHOW AUTO-LEARNED THIS RUN =====
     if st.session_state.auto_added:
-        with st.expander(f"🤖 Auto-apprendimento: {len(st.session_state.auto_added)} nuovi termini (≥ {auto_thresh:.2f})"):
-            auto_df = pd.DataFrame(st.session_state.auto_added, columns=["Termine", "Categoria", "Confidenza"])
-            auto_df = auto_df.sort_values("Confidenza", ascending=False)
-            st.dataframe(auto_df, use_container_width=True)
+    with st.expander(f"🤖 Suggerimenti AI da confermare ({len(st.session_state.auto_added)})"):
+        auto_df = pd.DataFrame(st.session_state.auto_added, columns=["Termine", "Categoria", "Confidenza"])
+        auto_df = auto_df.sort_values("Confidenza", ascending=False)
+        st.dataframe(auto_df, use_container_width=True)
+
+        if st.button("✅ Conferma questi suggerimenti"):
+            for t, p, c in st.session_state.auto_added:
+                new[t] = p
+            st.session_state.mem.update(new)
+            github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, st.session_state.mem)
+            st.session_state.auto_added = []
+            st.session_state.new = {}
+            st.success("✅ Suggerimenti confermati e salvati.")
 
     # ===== LEARNING INTERFACE (manuale per ciò che resta) =====
     learned = {norm(k) for k in (mem | new).keys()}
@@ -901,5 +910,6 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
