@@ -20,6 +20,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.enum.section import WD_SECTION_START
 
+
 # =============== CONFIG =================
 st.set_page_config(page_title="Studio ISA e Registro IVA", layout="wide")
 
@@ -34,16 +35,6 @@ model = None
 vectorizer = None
 model_B = None
 vectorizer_B = None
-
-if "model_A" not in st.session_state:
-    st.session_state.model_A = None
-if "vectorizer_A" not in st.session_state:
-    st.session_state.vectorizer_A = None
-
-if "model_B" not in st.session_state:
-    st.session_state.model_B = None
-if "vectorizer_B" not in st.session_state:
-    st.session_state.vectorizer_B = None
 
 # =============== UTILS =================
 def norm(s):
@@ -184,6 +175,7 @@ def train_ai_model(dictionary):
 # =============== CLASSIFICATION (helpers) =================
 def classify_A(desc, fam, mem):
     """Rule-based + memory + (optional) AI suggestion (used only in auto-pass)."""
+    global model, vectorizer
     d = norm(desc)
 
     fam_s = norm(fam)
@@ -235,42 +227,27 @@ def main():
     if not file:
         st.stop()
 
-        # Load file only once
-    if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
-        st.session_state.df = load_excel(file)
-        st.session_state.last_file_name = file.name
-
-        # Reset AI models and learning state
-        st.session_state.model_A = None
-        st.session_state.vectorizer_A = None
-        st.session_state.model_B = None
-        st.session_state.vectorizer_B = None
-        st.session_state.idx = 0
-        st.session_state.new = {}
-        st.session_state.auto_added = []
-
-        df = st.session_state.df
+    # Load file only once
+    if "df" not in st.session_state:
+        df = load_excel(file)
+        st.session_state.df = df
         mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
         st.session_state.mode = mode
         st.session_state.mem = github_load_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
+        st.session_state.new = {}
+        st.session_state.idx = 0
+        st.session_state.auto_added = []  # [(term, cat, conf)]
 
-    # Use session state references
     df = st.session_state.df.copy()
     mem = st.session_state.mem
     new = st.session_state.new
     mode = st.session_state.mode
 
-    # --- Train AI correct model (A or B), using updated memory ---
+    # Train AI
     if mode == "A":
-        if st.session_state.vectorizer_A is None or st.session_state.model_A is None or new:
-            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_A
-        model = st.session_state.model_A
+        vectorizer, model = train_ai_model(mem | new)
     else:
-        if st.session_state.vectorizer_B is None or st.session_state.model_B is None or new:
-            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_B
-        model = st.session_state.model_B
+        vectorizer_B, model_B = train_ai_model(mem | new)
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -356,7 +333,6 @@ def main():
 
     # ===== LEARNING INTERFACE (manuale per ciò che resta) =====
     learned = {norm(k) for k in (mem | new).keys()}
-    df["_clean"] = df[base].astype(str).map(norm)
     pending = [t for t in sorted(df["_clean"].unique()) if t not in learned]
 
     if pending:
@@ -364,42 +340,33 @@ def main():
         if idx >= len(pending):
             idx = 0
             st.session_state.idx = 0
+        term = pending[idx]
+        opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
+        last = st.session_state.get("last_cat", opts[0])
+        default_index = opts.index(last) if last in opts else 0
 
-    term = pending[idx]
-    opts = list(RULES_A.keys()) if mode=="A" else list(RULES_B.keys())
+        st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
+        cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
-    last = st.session_state.get("last_cat", opts[0])
-    default_index = opts.index(last) if last in opts else 0
-
-    st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
-    cat_sel = st.selectbox("Categoria:", opts, index=default_index)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("✅ Salva e prossimo", key="save_next", use_container_width=True):
+        if st.button("✅ Salva e prossimo"):
             new[norm(term)] = cat_sel
             st.session_state.new = new
             st.session_state.last_cat = cat_sel
 
-            if st.session_state.idx + 1 < len(pending):
-                st.session_state.idx += 1
-            else:
-                # Fine → salviamo su GitHub SENZA ricaricare la schermata
+            if idx + 1 >= len(pending):
+                # Fine: salva su GitHub
                 mem.update(new)
                 github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
                 st.session_state.mem = mem
                 st.session_state.new = {}
                 st.session_state.idx = 0
-                st.success("🎉 Tutto classificato e salvato sul cloud!")
+                st.success("🎉 Tutto classificato e salvato su GitHub!")
+                st.rerun()
 
-    with col2:
-        if st.button("⏩ Salta", key="skip_next", use_container_width=True):
-            if st.session_state.idx + 1 < len(pending):
-                st.session_state.idx += 1
-            else:
-                st.session_state.idx = 0  # ricomincia
-    st.stop()
+            st.session_state.idx = idx + 1
+            st.rerun()
+
+        st.stop()
 
     # ===== REPORT =====
     df = df.drop(columns=["_clean"], errors="ignore")
@@ -928,63 +895,3 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
