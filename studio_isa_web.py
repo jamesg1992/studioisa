@@ -227,16 +227,17 @@ def main():
     if not file:
         st.stop()
 
-    # Load file only once
-    if "df" not in st.session_state:
-        df = load_excel(file)
-        st.session_state.df = df
-        mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in df.columns) else "A"
-        st.session_state.mode = mode
-        st.session_state.mem = github_load_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B)
+    # Load file only once per file caricato
+    if "df" not in st.session_state or st.session_state.get("last_file") != file.name:
+        st.session_state.df = load_excel(file)
+        st.session_state.last_file = file.name
+
+        # reset solo quando cambia file
+        st.session_state.mode = "B" if any("prestazioneprodotto" in c.replace(" ","").lower() for c in st.session_state.df.columns) else "A"
+        st.session_state.mem = github_load_json(GITHUB_FILE_A if st.session_state.mode=="A" else GITHUB_FILE_B)
         st.session_state.new = {}
         st.session_state.idx = 0
-        st.session_state.auto_added = []  # [(term, cat, conf)]
+        st.session_state.auto_added = []
 
     df = st.session_state.df.copy()
     mem = st.session_state.mem
@@ -895,3 +896,4 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
