@@ -222,6 +222,13 @@ def main():
         st.stop()
     global model, vectorizer, model_B, vectorizer_B
 
+    # --- Inizializzazione session_state sicura ---
+    for key in ["model_A", "vectorizer_A", "model_B", "vectorizer_B", "new", "mem", "idx", "auto_added"]:
+        if key not in st.session_state:
+            st.session_state[key] = None if "model" in key or "vectorizer" in key else {}
+    if "idx" not in st.session_state: st.session_state.idx = 0
+    if "auto_added" not in st.session_state: st.session_state.auto_added = []
+
     st.title("📊 Studio ISA – DrVeto e VetsGo")
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
@@ -908,5 +915,6 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
