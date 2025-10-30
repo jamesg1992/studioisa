@@ -243,11 +243,17 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
-    # Train AI
+    # === TRAIN AI SOLO SE MANCANTE ===
     if mode == "A":
-        vectorizer, model = train_ai_model(mem | new)
+        if "vectorizer_A" not in st.session_state or "model_A" not in st.session_state:
+            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+    vectorizer = st.session_state.vectorizer_A
+    model = st.session_state.model_A
     else:
-        vectorizer_B, model_B = train_ai_model(mem | new)
+        if "vectorizer_B" not in st.session_state or "model_B" not in st.session_state:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
+    vectorizer_B = st.session_state.vectorizer_B
+    model_B = st.session_state.model_B
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -360,7 +366,14 @@ def main():
                 st.session_state.mem = mem
                 st.session_state.new = {}
                 st.session_state.idx = 0
-                st.success("🎉 Tutto classificato e salvato su GitHub!")
+                # reset modello per ritrain corretto
+                if mode == "A":
+                    st.session_state.vectorizer_A = None
+                    st.session_state.model_A = None
+                else:
+                    st.session_state.vectorizer_B = None
+                    st.session_state.model_B = None
+                st.success("🎉 Tutto classificato e salvato sul cloud!")
                 st.rerun()
 
             st.session_state.idx = idx + 1
@@ -895,3 +908,4 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
