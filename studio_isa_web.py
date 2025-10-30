@@ -251,6 +251,20 @@ def main():
     else:
         vectorizer_B, model_B = train_ai_model(mem | new)
 
+
+    # --- RILEVA COLONNE UNA VOLTA SOLA ---
+    if mode == "A":
+        desc = next(c for c in df.columns if "descrizione" in c.lower())
+        fam  = next((c for c in df.columns if "famiglia" in c.lower()), None)
+        qta  = next(c for c in df.columns if "quant" in c.lower() or c.strip() == "%")
+        netto = next(c for c in df.columns if "netto" in c.lower() and "dopo" in c.lower())
+
+    else:
+        prest = next(c for c in df.columns if "prestazioneprodotto" in c.replace(" ", "").lower())
+        imp   = next(c for c in df.columns if "totaleimpon" in c.lower())
+        iva_col = next((c for c in df.columns if "totaleconiva" in c.replace(" ", "").lower()), None)
+        tot   = next(c for c in df.columns if c.lower().strip()=="totale" or "totale" in c.lower())
+    
     # ===== PROCESS A =====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
@@ -910,6 +924,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
