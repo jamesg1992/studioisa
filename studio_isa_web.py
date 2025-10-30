@@ -222,13 +222,6 @@ def main():
         st.stop()
     global model, vectorizer, model_B, vectorizer_B
 
-    # --- Inizializzazione session_state sicura ---
-    for key in ["model_A", "vectorizer_A", "model_B", "vectorizer_B", "new", "mem", "idx", "auto_added"]:
-        if key not in st.session_state:
-            st.session_state[key] = None if "model" in key or "vectorizer" in key else {}
-    if "idx" not in st.session_state: st.session_state.idx = 0
-    if "auto_added" not in st.session_state: st.session_state.auto_added = []
-
     st.title("📊 Studio ISA – DrVeto e VetsGo")
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
@@ -250,17 +243,11 @@ def main():
     new = st.session_state.new
     mode = st.session_state.mode
 
-        # --- Train AI per modello corretto (A o B) ---
+    # Train AI
     if mode == "A":
-        if st.session_state.vectorizer_A is None or st.session_state.model_A is None:
-            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_A
-        model = st.session_state.model_A
+        vectorizer, model = train_ai_model(mem | new)
     else:
-        if st.session_state.vectorizer_B is None or st.session_state.model_B is None:
-            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
-        vectorizer = st.session_state.vectorizer_B
-        model = st.session_state.model_B
+        vectorizer_B, model_B = train_ai_model(mem | new)
 
     # ===== PROCESS A =====
     if mode == "A":
@@ -373,14 +360,7 @@ def main():
                 st.session_state.mem = mem
                 st.session_state.new = {}
                 st.session_state.idx = 0
-                # reset modello per ritrain corretto
-                if mode == "A":
-                    st.session_state.vectorizer_A = None
-                    st.session_state.model_A = None
-                else:
-                    st.session_state.vectorizer_B = None
-                    st.session_state.model_B = None
-                st.success("🎉 Tutto classificato e salvato sul cloud!")
+                st.success("🎉 Tutto classificato e salvato su GitHub!")
                 st.rerun()
 
             st.session_state.idx = idx + 1
@@ -915,6 +895,3 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
-
-
-
