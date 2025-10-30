@@ -90,20 +90,20 @@ def github_load_json(file_name):
 
 
 def github_save_json(file_name, data):
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-        get = requests.get(url, headers=headers, timeout=12)
-        sha = get.json().get("sha") if get.status_code == 200 else None
-
-        encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
-        payload = {"message": "Update ISA dictionary", "content": encoded, "branch": "main"}
-        if sha:
-            payload["sha"] = sha
-
-        requests.put(url, headers=headers, data=json.dumps(payload), timeout=20)
-    except:
-        pass
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    
+    get = requests.get(url, headers=headers)
+    sha = get.json().get("sha") if get.status_code == 200 else None
+    
+    encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, indent=2).encode()).decode()
+    payload = {"message": "Update ISA dictionary", "content": encoded, "branch": "main"}
+    if sha:
+        payload["sha"] = sha
+    
+    r = requests.put(url, headers=headers, data=json.dumps(payload))
+    if r.status_code not in (200, 201):
+        st.error(f"❌ Errore salvataggio GitHub: {r.status_code} → {r.text}")
         
 def load_clinic_config():
     try:
@@ -897,3 +897,4 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
