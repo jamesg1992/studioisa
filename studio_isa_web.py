@@ -246,10 +246,15 @@ def main():
 
     # Train AI
     if mode == "A":
-        vectorizer, model = train_ai_model(mem | new)
+        if "vectorizer_A" not in st.session_state or "model_A" not in st.session_state:
+            st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+        vectorizer = st.session_state.vectorizer_A
+        model = st.session_state.model_A
     else:
-        vectorizer_B, model_B = train_ai_model(mem | new)
-
+        if "vectorizer_B" not in st.session_state or "model_B" not in st.session_state:
+            st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
+        vectorizer = st.session_state.vectorizer_B
+        model = st.session_state.model_B
     # ===== PROCESS A =====
     if mode == "A":
         desc = next(c for c in df.columns if "descrizione" in c.lower())
@@ -352,6 +357,10 @@ def main():
         if st.button("✅ Salva e prossimo"):
             new[norm(term)] = cat_sel
             st.session_state.new = new
+            if mode == "A":
+                st.session_state.vectorizer_A, st.session_state.model_A = train_ai_model(mem | new)
+            else:
+                st.session_state.vectorizer_B, st.session_state.model_B = train_ai_model(mem | new)
             st.session_state.last_cat = cat_sel
 
             if idx + 1 >= len(pending):
@@ -896,4 +905,5 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
