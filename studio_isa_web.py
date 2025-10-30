@@ -183,9 +183,10 @@ def classify_A(desc, fam, mem):
     fam_s = norm(fam)
     if fam_s and fam_s not in {"privato","professionista","nan","none",""}:
         return fam_s.upper()
-
+    d_tokens = d.split()
     for k, v in mem.items():
-        if norm(k) in d:
+        k_norm = norm(k)
+        if k_norm == d or k_norm in d_tokens:
             return v
 
     # Pure rule fallback
@@ -200,8 +201,10 @@ def classify_B(prest, mem):
     """Rule-based + memory + (optional) AI suggestion (used only in auto-pass)."""
     d = norm(prest)
 
+    d_tokens = d.split()
     for k, v in mem.items():
-        if norm(k) in d:
+        k_norm = norm(k)
+        if k_norm == d or k_norm in d_tokens:
             return v
 
     for cat, keys in RULES_B.items():
@@ -924,6 +927,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
