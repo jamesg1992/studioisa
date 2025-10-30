@@ -135,16 +135,12 @@ def save_clinic_config(data: dict):
 
 # =============== CATEGORY RULES =================
 RULES_A = {
-    "LABORATORIO": ["analisi","emocromo","test","esame","coprolog","feci","giardia","leishmania","citolog","istolog","urinocolt","urine"],
-    "VISITE": ["visita","controllo","consulto","dermatologic"],
-    "TERAPIA": ["terapia","terapie"],
-    "FAR": ["meloxidyl","konclav","enrox","profenacarp","apoquel","osurnia","cylan","mometa","aristos","cytopoint","milbemax","stomorgyl","previcox"],
-    "CHIRURGIA": ["intervento","chirurg","castraz","sterilizz","ovariect","detartrasi","estraz","biopsia","orchiettomia","odontostomat"],
-    "DIAGNOSTICA PER IMMAGINI": ["rx","radiograf","eco","ecografia","tac"],
-    "MEDICINA": ["flebo","day hospital","trattamento","emedog","cerenia","endovena","pressione"],
-    "VACCINI": ["vacc","letifend","rabbia","trivalente","felv"],
-    "CHIP": ["microchip","chip"],
-    "ALTRE PRESTAZIONI": ["trasporto","eutanasia","unghie","cremazion","otoematoma","pet corner","ricette","medicazione","manualità"]
+    "Visite domiciliari o presso allevamenti": ["domicilio","allevamenti"],
+    "Visite ambulatoriali": ["visita","controllo","consulto","terapia","trattam","manual","microchip","vacc","medicazione"],
+    "Esami diagnostici per immagine": ["rx","eco","ecogra","tac","raggi","radi"],
+    "Altri esami diagnostici": ["analisi","emocromo","prelievo","laboratorio"],
+    "Interventi chirurgici": ["chirurg","castraz","ovariect","detartrasi","estraz","anest","endo"],
+    "Altre attività": ["acconto"]
 }
 
 RULES_B = {
@@ -895,3 +891,4 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
