@@ -332,10 +332,10 @@ def main():
 
     # ===== SHOW AUTO-LEARNED THIS RUN =====
     if st.session_state.auto_added:
-    with st.expander(f"🤖 Suggerimenti AI da confermare ({len(st.session_state.auto_added)})"):
-        auto_df = pd.DataFrame(st.session_state.auto_added, columns=["Termine", "Categoria", "Confidenza"])
-        auto_df = auto_df.sort_values("Confidenza", ascending=False)
-        st.dataframe(auto_df, use_container_width=True)
+        with st.expander(f"🤖 Suggerimenti AI da confermare ({len(st.session_state.auto_added)})"):
+            auto_df = pd.DataFrame(st.session_state.auto_added, columns=["Termine", "Categoria", "Confidenza"])
+            auto_df = auto_df.sort_values("Confidenza", ascending=False)
+            st.dataframe(auto_df, use_container_width=True)
 
         if st.button("✅ Conferma questi suggerimenti"):
             for t, p, c in st.session_state.auto_added:
@@ -910,6 +910,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
