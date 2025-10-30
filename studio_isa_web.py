@@ -304,7 +304,7 @@ def main():
 
         base = prest
 
-        # ========== AUTO APPRENDIMENTO PASS ==========
+    # ========== AUTO APPRENDIMENTO PASS (USA IL MODELLO UNICO) ==========
         learned = {norm(k) for k in (mem | new).keys()}
         df["_clean"] = df[base].astype(str).map(norm)
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
@@ -313,7 +313,7 @@ def main():
         if model and vectorizer and candidates:
             X = vectorizer.transform(candidates)
             probs = model.predict_proba(X)
-            preds = model_B.classes_[probs.argmax(axis=1)]
+            preds = model.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
             for t, p, c in zip(candidates, preds, confs):
                 if float(c) >= auto_thresh:
@@ -324,8 +324,8 @@ def main():
             st.session_state.new = new
             st.session_state.auto_added.extend(auto_added_now)
 
-        # Classify rows (using classify_B that includes memory & rules)
-        df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem | new))
+    df["CategoriaFinale"] = df[prest].apply(lambda x: classify_B(x, mem | new))
+
 
     # Remove Privato / Professionista
     df = df[~df["CategoriaFinale"].str.lower().isin(["privato","professionista"])]
@@ -905,6 +905,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
