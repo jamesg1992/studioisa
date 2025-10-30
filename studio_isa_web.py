@@ -282,6 +282,10 @@ def main():
         if auto_added_now:
             st.session_state.new = new
             st.session_state.auto_added.extend(auto_added_now)
+            mem.update(new)
+            github_save_json(GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B, mem)
+            st.session_state.mem = mem
+            st.info(f"✅ Salvato sul cloud ({len(auto_added_now)} nuovi termini appresi automaticamente)")
 
         # Classify rows (using classify_A that includes memory & rules)
         df["CategoriaFinale"] = df.apply(lambda r: classify_A(r[desc], r[fam] if fam else None, mem | new), axis=1)
@@ -897,4 +901,5 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
