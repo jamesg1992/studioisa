@@ -246,7 +246,7 @@ def main():
         st.stop()
 
     # Load file only once
-    if "df" not in st.session_state:
+    if "df" not in st.session_state or st.session_state.get("last_file_name") != file.name:
         st.session_state.df = load_excel(file)
         st.session_state.last_file_name = file.name
         df = st.session_state.df.copy()
@@ -913,6 +913,7 @@ def render_registro_iva():
 
 if __name__ == "__main__":
     main()
+
 
 
 
