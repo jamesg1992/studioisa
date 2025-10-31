@@ -8,10 +8,12 @@ from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
 import matplotlib.pyplot as plt
+import hashlib
 
 # AI
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -27,6 +29,7 @@ st.set_page_config(page_title="Studio ISA e Registro IVA", layout="wide")
 GITHUB_FILE_A = "dizionario_drveto.json"
 GITHUB_FILE_B = "dizionario_vetsgo.json"
 CONFIG_FILE = "config_clinica.json"
+USERS_FILE = "users.json"
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -76,6 +79,31 @@ def load_excel(file):
 
 
 # =============== GITHUB =================
+def load_users():
+    data = github_load_json(USERS_FILE)
+    for k, v in data.items():
+        if "permissions" not in v:
+            v["permissions"] = {
+                "manage_ai": False,
+                "manage_clinics": False,
+                "manage_users": False,
+            }
+    return data
+
+def save_users(users: dict):
+    github_save_json(USERS_FILE, users)
+
+def reset_admin_password(new_password):
+    users = load_users()
+    if "admin" not in users:
+        users["admin"] = {"password": hash_pwd(new_password), "role": "admin", "permissions": {}}
+    else:
+        users["admin"]["password"] = hash_pwd(new_password)
+    save_users(users)
+
+def hash_pwd(pwd: str) -> str:
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
 def github_load_json(file_name):
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
@@ -83,7 +111,7 @@ def github_load_json(file_name):
         r = requests.get(url, headers=headers, timeout=12)
         if r.status_code == 200:
             raw = json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
-            return {norm(k): v for k, v in raw.items()}
+            return raw
     except:
         pass
     return {}
@@ -104,7 +132,35 @@ def github_save_json(file_name, data):
     r = requests.put(url, headers=headers, data=json.dumps(payload))
     if r.status_code not in (200, 201):
         st.error(f"❌ Errore salvataggio GitHub: {r.status_code} → {r.text}")
-        
+
+# =============== LOGIN SYSTEM =================
+def login():
+    users = load_users()
+
+    if "logged_user" in st.session_state:
+        return st.session_state.logged_user  # già loggato
+
+    st.title("🔐 Accesso al portale")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Accedi"):
+        if username in users and users[username]["password"] == hash_pwd(password):
+            st.session_state.logged_user = username
+
+            #aggiorna stato ultimo
+            users[username]["last_login"] = datetime.now().isoformat()
+            save_users(users)
+            
+            st.success(f"Benvenuto {username} 👋")
+            st.rerun()
+        else:
+            st.error("❌ Credenziali errate")
+    
+    st.stop()  # blocca l’app finché non fa login
+
+logged_user = login()
+
 def load_clinic_config():
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CONFIG_FILE}"
@@ -160,19 +216,25 @@ def train_ai_model(dictionary):
     dictionary = {k: v for k, v in dictionary.items() if k.strip() != ""}
     if not dictionary:
         return None, None
+
     texts = list(dictionary.keys())
     labels = list(dictionary.values())
-    vec = TfidfVectorizer(lowercase=True)
+
+    vec = TfidfVectorizer(lowercase=True, ngram_range=(1,2), min_df=1)
     try:
         X = vec.fit_transform(texts)
     except ValueError:
         return None, None
+
     if len(set(labels)) <= 1:
         return None, None
-    m = MultinomialNB()
-    m.fit(X, labels)
-    return vec, m
 
+    # SVM molto più precisa
+    base_model = LinearSVC()
+    model = CalibratedClassifierCV(base_model)  # aggiunge predict_proba() per auto-apprendimento
+    model.fit(X, labels)
+
+    return vec, model
 
 # =============== CLASSIFICATION (helpers) =================
 def classify_A(desc, fam, mem):
@@ -213,18 +275,151 @@ def classify_B(prest, mem):
 
     return "Altre attività"
 
+def render_user_management():
+    st.title("👤 Gestione Utenti")
+
+    users = load_users()
+
+    #Ricerca utenti
+    search = st.text_input("🔍 Cerca utente per nome", "").strip().lower()
+    if search:
+        users = {u: data for u, data in users.items() if search in u.lower()}
+
+    #Nessun risultato
+    if not users:
+        st.warning("Nessun utente trovato!")
+        return
+
+    st.subheader("Utenti Registrati")
+
+    for username, u in users.items():
+
+        last_login = u.get("last_login")
+        if last_login:
+            dt = datetime.fromisoformat(last_login)
+            diff = (datetime.now() - dt).total_seconds() / 60  # minuti
+            if diff < 5:
+                status = "🟢 Online"
+            elif diff < 1440:
+                status = "🟡 Attivo oggi"
+            else:
+                status = "⚪ Offline"
+        else:
+            status = "⚪ Mai connesso"
+                
+
+        with st.container():
+            st.markdown(f"### {username}  ({u.get('role','user')}) — {status}")
+
+            col1, col2, col3 = st.columns([2, 2, 1])
+
+            with col1:
+                # Cambia ruolo
+                new_role = st.selectbox(
+                    "Ruolo",
+                    ["user", "admin"],
+                    index=["user","admin"].index(u.get("role","user")),
+                    key=f"role_{username}"
+                )
+
+            with col2:
+                # Reset password utente
+                new_pwd = st.text_input(f"Nuova password per {username}", type="password", key=f"pwd_{username}")
+                if st.button("🔑 Reset Password", key=f"reset_{username}"):
+                    if new_pwd.strip():
+                        users[username]["password"] = hash_pwd(new_pwd)
+                        save_users(users)
+                        st.success(f"✅ Password aggiornata per {username}")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Inserisci una password valida")
+
+            with col3:
+                # Elimina utente (no admin, no se stesso)
+                if username not in ("admin", logged_user):
+                    if st.button("🗑️ Elimina", key=f"delete_{username}"):
+                        users.pop(username, None)
+                        save_users(users)
+                        st.success(f"✅ Utente {username} eliminato")
+                        st.rerun()
+
+            # --- PERMESSI ---
+            st.markdown("#### Permessi")
+            perms = u.get("permissions", {})
+
+            p1 = st.checkbox("Può modificare sensibilità AI", value=perms.get("manage_ai", False), key=f"p_ai_{username}")
+            p2 = st.checkbox("Può gestire Cliniche", value=perms.get("manage_clinics", False), key=f"p_clinic_{username}")
+            p3 = st.checkbox("Può gestire utenti", value=perms.get("manage_users", False), key=f"p_users_{username}")
+
+            if st.button("💾 Salva permessi", key=f"save_perm_{username}"):
+                users[username].setdefault("permissions", {})
+                users[username]["permissions"]["manage_ai"] = p1
+                users[username]["permissions"]["manage_clinics"] = p2
+                users[username]["permissions"]["manage_users"] = p3
+                save_users(users)
+                st.success(f"✅ Permessi aggiornati per {username}")
+                st.rerun()
+
+            st.markdown("---")
+
+    # ───── Crea nuovo utente ─────
+    st.subheader("➕ Crea Nuovo Utente")
+    new_user = st.text_input("Username nuovo utente")
+    new_pwd  = st.text_input("Password", type="password")
+    role_new = st.selectbox("Ruolo", ["user", "admin"])
+    if st.button("✅ Crea Utente"):
+        if new_user.strip() and new_pwd.strip():
+            users[new_user] = {
+                "password": hash_pwd(new_pwd),
+                "role": role_new,
+                "permissions": {}
+            }
+            save_users(users)
+            st.success(f"✅ Utente {new_user} creato")
+            st.rerun()
+        else:
+            st.warning("⚠️ Compila tutti i campi")
+
 
 # =============== SIDEBAR =================
-page = st.sidebar.radio("📌 Navigazione", ["Studio ISA", "Registro IVA"])
-auto_thresh = st.sidebar.slider("Soglia auto-apprendimento (AI)", 0.50, 0.99, 0.85, 0.01)
+pages = ["📊 Studio ISA", "📄 Registro IVA"]
+user_data = load_users().get(logged_user,{})
+permissions = user_data.get("permissions", {})
+
+if user_data.get("role") == "admin" or permissions.get("manage_users", False):
+    pages.append("👤 Gestione Utenti")
+page = st.sidebar.radio("📌 Navigazione", pages)
+
+# --- Permessi utente ---
+users_all = load_users()
+user_data = users_all.get(logged_user, {})
+permissions = user_data.get("permissions", {})
+
+can_manage_ai = permissions.get("manage_ai", False)
+
+auto_thresh = st.sidebar.slider(
+    "Soglia auto-apprendimento (AI)",
+    0.50, 0.99, 0.85, 0.01,
+    disabled=not can_manage_ai
+)
+
+if not can_manage_ai:
+    st.sidebar.caption("🔒 Non hai il permesso di modificare la sensibilità AI")
+else:
+    st.sidebar.caption("✅ Puoi modificare la sensibilità AI")
 st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
 st.sidebar.caption("Alcyon Italia SpA - 2025")
+st.sidebar.caption("v.1.0")
 
 # =============== MAIN =================
 def main():
-    if page == "Registro IVA":
-        render_registro_iva()
+    if page == "👤 Gestione Utenti":
+        render_user_management()
         st.stop()
+    
+    if st.sidebar.button("🔓 Logout"):
+        st.session_state.pop("logged_user", None)
+        st.rerun()
     global model, vectorizer, model_B, vectorizer_B
 
     st.title("📊 Studio ISA – DrVeto e VetsGo")
@@ -525,10 +720,17 @@ def add_field_run(paragraph, field):
     r._r.append(fldChar2)
     
 def render_registro_iva():
-    st.header("📄 Registro IVA")
-
+    if st.sidebar.button("🔓 Logout"):
+        st.session_state.pop("logged_user", None)
+        st.rerun()
+    user = load_users().get(logged_user, {})
     config_all = load_clinic_config()
     cliniche = list(config_all.keys())
+    if not user.get("permissions", {}).get("manage_clinics", False):
+        st.info("🔒 Non hai permesso per modificare l’anagrafica cliniche.")
+        clinica_scelta = st.selectbox("Seleziona Clinica", cliniche)
+        return
+    st.header("📄 Registro IVA")
     
     clinica_scelta = st.selectbox("Seleziona Clinica", ["+ Nuova Clinica"] + cliniche)
 
@@ -926,7 +1128,44 @@ def render_registro_iva():
 
 
 if __name__ == "__main__":
-    main()
+    if page == "📄 Registro IVA":
+        render_registro_iva()
+    elif page == "👤 Gestione Utenti":
+        render_user_management()
+    else:
+        main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
