@@ -278,6 +278,54 @@ def classify_B(prest, mem):
 
     return "Altre attività"
 
+def render_dictionary_editor():
+    st.title("📚 Gestione Dizionario")
+
+    mode = st.session_state.get("mode", "A")
+    filename = GITHUB_FILE_A if mode=="A" else GITHUB_FILE_B
+
+    data = github_load_json(filename)
+
+    if not data:
+        st.info("⚠️ Il dizionario è vuoto.")
+        return
+
+    st.subheader("🔍 Cerca termine")
+    query = st.text_input("Filtro", placeholder="es. eco, chirurgia, vaccino...", key="dict_search").strip().lower()
+
+    filtered = {k:v for k,v in data.items() if query in k.lower()}
+
+    st.write(f"Termini trovati: **{len(filtered)}**")
+
+    for term, cat in sorted(filtered.items(), key=lambda x: (x[1], x[0])):
+        col1, col2, col3 = st.columns([3,2,1])
+        col1.write(f"**{term}**")
+        new_cat = col2.selectbox("Categoria", list(RULES_A.keys() if mode=="A" else RULES_B.keys()),
+                                index=(list(RULES_A.keys() if mode=="A" else RULES_B.keys())).index(cat),
+                                key=f"cat_{term}")
+        if col2.button("💾", key=f"save_{term}"):
+            data[term] = new_cat
+            github_save_json(filename, data)
+            st.success(f"✅ Aggiornato '{term}'")
+            st.rerun()
+
+        if col3.button("🗑️", key=f"del_{term}"):
+            data.pop(term, None)
+            github_save_json(filename, data)
+            st.warning(f"🗑️ Rimosso '{term}'")
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("➕ Aggiungi nuovo termine")
+    new_term = st.text_input("Termine nuovo")
+    new_cat = st.selectbox("Categoria nuova", list(RULES_A.keys() if mode=="A" else RULES_B.keys()))
+    if st.button("➕ Aggiungi"):
+        data[new_term.lower().strip()] = new_cat
+        github_save_json(filename, data)
+        st.success("✅ Aggiunto")
+        st.rerun()
+
 def render_user_management():
     st.title("👤 Gestione Utenti")
 
@@ -298,7 +346,7 @@ def render_user_management():
         {
             "Username": u,
             "Ruolo": d.get("role", "user"),
-            "Gestione AI": "✅" if d.get("permissions", {}).get("manage_ai", False) else "❌",
+            "Gestione AI e Dizionario": "✅" if d.get("permissions", {}).get("manage_ai", False) else "❌",
             "Gestione Cliniche (aggiungi/rimuovi)": "✅" if d.get("permissions", {}).get("manage_clinics", False) else "❌",
             "Può usare Registro IVA": "✅" if d.get("permissions", {}).get("use_registro_iva", False) else "❌",
             "Gestione Utenti": "✅" if d.get("permissions", {}).get("manage_users", False) else "❌",
@@ -327,7 +375,7 @@ def render_user_management():
         # --- PERMESSI DI BASE ---
         perms = u.get("permissions", {})
 
-        p1 = st.checkbox("Può modificare sensibilità AI", value=perms.get("manage_ai", False), key=f"p_ai_{selected}")
+        p1 = st.checkbox("Può modificare AI e Dizionario", value=perms.get("manage_ai", False), key=f"p_ai_{selected}")
         p2 = st.checkbox("Può usare Registro IVA", value=perms.get("use_registro_iva", True), key=f"p_registro_{selected}")
         p3 = st.checkbox("Può gestire Cliniche (aggiungi/modifica)", value=perms.get("manage_clinics", False), key=f"p_clinic_{selected}")
         p4 = st.checkbox("Può gestire utenti", value=perms.get("manage_users", False), key=f"p_users_{selected}")
@@ -399,6 +447,9 @@ pages = ["📊 Studio ISA", "📄 Registro IVA"]
 user_data = load_users().get(logged_user,{})
 permissions = user_data.get("permissions", {})
 
+if user_data.get("role") == "admin" or permissions.get("manage_ai", False):
+    pages.append("📚 Gestione Dizionario")
+
 if user_data.get("role") == "admin" or permissions.get("manage_users", False):
     pages.append("👤 Gestione Utenti")
 page = st.sidebar.radio("📌 Navigazione", pages)
@@ -427,6 +478,10 @@ else:
 def main():
     if page == "👤 Gestione Utenti":
         render_user_management()
+        st.stop()
+
+    if page == "📚 Gestione Dizionario":
+        render_dictionary_editor()
         st.stop()
     
     if st.sidebar.button("🔓 Logout"):
@@ -1180,72 +1235,3 @@ if __name__ == "__main__":
         render_user_management()
     else:
         main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
