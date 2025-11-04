@@ -420,8 +420,8 @@ if not can_manage_ai:
     st.sidebar.caption("🔒 Non hai il permesso di modificare la sensibilità AI")
 else:
     st.sidebar.caption("✅ Puoi modificare la sensibilità AI")
-st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
-st.sidebar.caption("Alcyon Italia SpA - 2025 - v.1.1")
+    st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
+    st.sidebar.caption("Alcyon Italia SpA - 2025 - v.1.1")
 
 # =============== MAIN =================
 def main():
@@ -1180,6 +1180,7 @@ if __name__ == "__main__":
         render_user_management()
     else:
         main()
+
 
 
 
