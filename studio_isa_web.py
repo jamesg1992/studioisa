@@ -928,7 +928,6 @@ def render_registro_iva():
         "Totale Sconto": "tot_sconto",
         "Rit. d'acconto": "tot_rit",
         "Totale": "totale",
-        "Codice Fiscale": "codice_fiscale",
     }
 
     # Trova i nomi REALI presenti nel file per ciascun “wanted”
@@ -959,10 +958,10 @@ def render_registro_iva():
     # --- Colonne da mostrare a video / esportare (usiamo i nomi REALI del file) ---
     # Mantieni ordine e verifica presenza
     preferred_display = [
-        "Data", "Numero", "Cliente", "P. IVA", "Codice Fiscale",
+        "Data", "Numero", "Cliente", "P. IVA", "Codice fiscale",
         "Indirizzo", "CAP", "Città",
         "Totale Netto", "Totale ENPAV", "Totale imponibile",  # <- qui il nome richiesto dal file
-        "Totale IVA", "Totale Sconto", "Rit. d'acconto", "Totale",
+        "Totale IVA", "Totale sconto", "Rit. d'acconto", "Totale",
     ]
     # Per "Totale imponibile" usa la versione reale trovata (potrebbe avere variante)
     real_tot_imp = find_col_by_norm(df_raw, "Totale imponibile")
@@ -1236,4 +1235,5 @@ if __name__ == "__main__":
         render_user_management()
     else:
         main()
+
 
