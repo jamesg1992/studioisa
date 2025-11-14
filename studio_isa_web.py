@@ -1090,6 +1090,17 @@ def render_registro_iva():
 
         doc = Document()
 
+        # ========================
+        #   TITOLO REGISTRO IVA
+        # ========================
+        title = doc.add_heading("REGISTRO IVA", level=1)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.runs[0].font.name = "Aptos Narrow"
+        title.runs[0].font.size = Pt(20)
+        title.runs[0].bold = True
+
+        doc.add_paragraph()   # Spazio aggiuntivo
+
         # Layout orizzontale + margini
         section = doc.sections[0]
         section.orientation = WD_ORIENT.LANDSCAPE
@@ -1235,5 +1246,6 @@ if __name__ == "__main__":
         render_user_management()
     else:
         main()
+
 
 
