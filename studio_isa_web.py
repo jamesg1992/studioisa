@@ -928,6 +928,7 @@ def render_registro_iva():
         "Totale Sconto": "tot_sconto",
         "Rit. d'acconto": "tot_rit",
         "Totale": "totale",
+        "Codice Fiscale": "codice_fiscale",
     }
 
     # Trova i nomi REALI presenti nel file per ciascun “wanted”
@@ -1235,3 +1236,4 @@ if __name__ == "__main__":
         render_user_management()
     else:
         main()
+
