@@ -447,23 +447,21 @@ def render_user_management():
             st.warning("⚠️ Compila tutti i campi.")
 
 # =============== SIDEBAR =================
-pages = ["📊 Studio ISA", "📄 Registro IVA"]
-if logged_user in ("Tofanelli",):
-    pages.append("Export Tofanelli")
-user_data = load_users().get(logged_user,{})
-permissions = user_data.get("permissions", {})
-
-if user_data.get("role") == "admin" or permissions.get("manage_ai", False):
-    pages.append("📚 Gestione Dizionario")
-
-if user_data.get("role") == "admin" or permissions.get("manage_users", False):
-    pages.append("👤 Gestione Utenti")
-page = st.sidebar.radio("📌 Navigazione", pages)
-
-# --- Permessi utente ---
 users_all = load_users()
 user_data = users_all.get(logged_user, {})
 permissions = user_data.get("permissions", {})
+
+if logged_user == "Tofanelli":
+    # Solo questa pagina per Tofanelli
+    pages = ["📄 Export Tofanelli"]
+else:
+    pages = ["📊 Studio ISA", "📄 Registro IVA"]
+    if user_data.get("role") == "admin" or permissions.get("manage_ai", False):
+        pages.append("📚 Gestione Dizionario")
+    if user_data.get("role") == "admin" or permissions.get("manage_users", False):
+        pages.append("👤 Gestione Utenti")
+
+page = st.sidebar.radio("📌 Navigazione", pages)
 
 can_manage_ai = permissions.get("manage_ai", False)
 
@@ -1348,6 +1346,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
