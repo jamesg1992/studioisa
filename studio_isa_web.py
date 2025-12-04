@@ -1339,17 +1339,16 @@ def render_registro_iva():
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 
-
-
 if __name__ == "__main__":
     if page == "📄 Registro IVA":
         render_registro_iva()
     elif page == "👤 Gestione Utenti":
         render_user_management()
-    elif page == "Export Tofanelli":
-        render_isa_doc_cliente():
+    elif page == "📄 Export Tofanelli":
+        render_isa_doc_cliente()
     else:
         main()
+
 
 
 
