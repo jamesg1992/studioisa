@@ -824,7 +824,7 @@ def render_isa_doc_cliente():
         df_lista["categoria"].map(legenda).fillna("senza categoria")
     )
 
-    st.subheader("Lista (con Nuova categoria)")
+    st.subheader("Lista")
     st.dataframe(df_lista, use_container_width=True)
 
        # --- PIVOT ---
@@ -861,7 +861,7 @@ def render_isa_doc_cliente():
     }
     df_pivot = pd.concat([df_pivot, pd.DataFrame([tot_row])], ignore_index=True)
 
-    st.subheader("Tabella Pivot")
+    st.subheader("Tabella")
     st.dataframe(df_pivot, use_container_width=True)
 
     # Grafico semplice tipo quello della tabella ISA esistente
@@ -1366,6 +1366,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
