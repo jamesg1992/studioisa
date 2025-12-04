@@ -30,6 +30,7 @@ GITHUB_FILE_A = "dizionario_drveto.json"
 GITHUB_FILE_B = "dizionario_vetsgo.json"
 CONFIG_FILE = "config_clinica.json"
 USERS_FILE = "users.json"
+GITHUB_FILE_ISA = "isa_legenda.json"
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -118,7 +119,10 @@ def github_load_json(file_name):
     except:
         pass
     return {}
-
+    
+def load_isa_legend():
+    legenda = github_load_json(GITHUB_FILE_ISA)
+    return legenda or {}
 
 def github_save_json(file_name, data):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_name}"
@@ -444,6 +448,8 @@ def render_user_management():
 
 # =============== SIDEBAR =================
 pages = ["📊 Studio ISA", "📄 Registro IVA"]
+if logged_user in ("Tofanelli",):
+    pages.append("Export Tofanelli")
 user_data = load_users().get(logged_user,{})
 permissions = user_data.get("permissions", {})
 
@@ -786,7 +792,103 @@ def add_field_run(paragraph, field):
     r._r.append(fldChar1)
     r._r.append(instrText)
     r._r.append(fldChar2)
+
+def render_isa_doc_cliente():
+    st.title("Studio ISA – Doc Cliente")
+
+    legenda = load_isa_legend()
+    if not legenda:
+        st.warning("La legenda ISA (isa_legenda.json) è vuota o non trovata su GitHub.")
     
+    file = st.file_uploader("Carica il file Excel ExportT", type=["xlsx", "xls"])
+    if not file:
+        st.stop()
+
+    # Legge tutti i fogli, ma per sicurezza usa il foglio 'Lista' se esiste
+    xls = pd.read_excel(file, sheet_name=None)
+    if "Lista" in xls:
+        df_lista = xls["Lista"].copy()
+    else:
+        # Se per qualche motivo arriva solo la lista come singolo foglio
+        # prende il primo foglio
+        df_lista = list(xls.values())[0].copy()
+
+    # Assicura la colonna 'Nuova categoria'
+    if "Nuova categoria" not in df_lista.columns:
+        df_lista.insert(1, "Nuova categoria", "")
+
+    if "categoria" not in df_lista.columns:
+        st.error("Nel foglio 'Lista' manca la colonna 'categoria'.")
+        st.stop()
+
+    # Applica la legenda JSON
+    df_lista["Nuova categoria"] = (
+        df_lista["categoria"].map(legenda).fillna("senza categoria")
+    )
+
+    st.subheader("Lista (con Nuova categoria)")
+    st.dataframe(df_lista, use_container_width=True)
+
+    # --- PIVOT ---
+    for col in ["quantita", "totaleimponibile", "totaleconiva"]:
+        if col not in df_lista.columns:
+            st.error(f"Nel foglio 'Lista' manca la colonna '{col}'.")
+            st.stop()
+
+    df_pivot = (
+        df_lista
+        .groupby("Nuova categoria", dropna=False)[["quantita", "totaleimponibile", "totaleconiva"]]
+        .sum()
+        .reset_index()
+        .rename(columns={
+            "Nuova categoria": "Etichette di riga",
+            "quantita": "Somma di quantita",
+            "totaleimponibile": "Somma di totaleimponibile",
+            "totaleconiva": "Somma di totaleconiva",
+        })
+    )
+
+    # Riga totale complessivo
+    tot_row = {
+        "Etichette di riga": "Totale complessivo",
+        "Somma di quantita": df_pivot["Somma di quantita"].sum(),
+        "Somma di totaleimponibile": df_pivot["Somma di totaleimponibile"].sum(),
+        "Somma di totaleconiva": df_pivot["Somma di totaleconiva"].sum(),
+    }
+    df_pivot = pd.concat([df_pivot, pd.DataFrame([tot_row])], ignore_index=True)
+
+    st.subheader("Tabella Pivot")
+    st.dataframe(df_pivot, use_container_width=True)
+
+    # Grafico semplice tipo quello della tabella ISA esistente
+    st.subheader("Grafico per categoria (Netto con IVA)")
+    chart_df = df_pivot[df_pivot["Etichette di riga"] != "Totale complessivo"]
+    st.bar_chart(
+        chart_df.set_index("Etichette di riga")["Somma di totaleconiva"]
+    )
+
+    # --- Export Excel con 3 fogli ---
+    with BytesIO() as output:
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df_lista.to_excel(writer, sheet_name="Lista", index=False)
+            df_pivot.to_excel(writer, sheet_name="Tabella Pivot", index=False)
+
+            # Ricrea il foglio Corrispondenza a partire dalla legenda JSON
+            df_corr = pd.DataFrame(
+                [(k, v) for k, v in legenda.items()],
+                columns=["CATEGORIE GIÀ PRESENTI", "CATEGORIE VOLUTE DALLA CLINICA"],
+            )
+            df_corr.to_excel(writer, sheet_name="Corrispondenza", index=False)
+
+        data = output.getvalue()
+
+    st.download_button(
+        "Scarica Excel ISA Cliente",
+        data=data,
+        file_name="Studio_ISA_Cliente.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
 def render_registro_iva():
     if st.sidebar.button("🔓 Logout"):
         st.session_state.pop("logged_user", None)
@@ -1244,8 +1346,11 @@ if __name__ == "__main__":
         render_registro_iva()
     elif page == "👤 Gestione Utenti":
         render_user_management()
+    elif page == "Export Tofanelli":
+        render_isa_doc_cliente():
     else:
         main()
+
 
 
 
