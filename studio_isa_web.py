@@ -7,6 +7,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Font
+
 import matplotlib.pyplot as plt
 import hashlib
 
@@ -1366,6 +1368,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
