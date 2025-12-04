@@ -792,13 +792,13 @@ def add_field_run(paragraph, field):
     r._r.append(fldChar2)
 
 def render_isa_doc_cliente():
-    st.title("Studio ISA – Doc Cliente")
+    st.title("Export Tofanelli")
 
     legenda = load_isa_legend()
     if not legenda:
-        st.warning("La legenda ISA (isa_legenda.json) è vuota o non trovata su GitHub.")
+        st.warning("La legenda ISA (isa_legenda.json) è vuota o non trovata sul cloud.")
     
-    file = st.file_uploader("Carica il file Excel ExportT", type=["xlsx", "xls"])
+    file = st.file_uploader("Carica il file Excel", type=["xlsx", "xls"])
     if not file:
         st.stop()
 
@@ -827,14 +827,20 @@ def render_isa_doc_cliente():
     st.subheader("Lista (con Nuova categoria)")
     st.dataframe(df_lista, use_container_width=True)
 
-    # --- PIVOT ---
+       # --- PIVOT ---
     for col in ["quantita", "totaleimponibile", "totaleconiva"]:
         if col not in df_lista.columns:
             st.error(f"Nel foglio 'Lista' manca la colonna '{col}'.")
             st.stop()
 
+    # eventualmente rinomina la categoria "senza categoria" in "#N/D" per la pivot
+    df_pivot_base = df_lista.copy()
+    df_pivot_base["Nuova categoria"] = df_pivot_base["Nuova categoria"].replace(
+        "senza categoria", "#N/D"
+    )
+
     df_pivot = (
-        df_lista
+        df_pivot_base
         .groupby("Nuova categoria", dropna=False)[["quantita", "totaleimponibile", "totaleconiva"]]
         .sum()
         .reset_index()
@@ -846,7 +852,7 @@ def render_isa_doc_cliente():
         })
     )
 
-    # Riga totale complessivo
+    # Riga totale complessivo (somma di tutte le righe sopra)
     tot_row = {
         "Etichette di riga": "Totale complessivo",
         "Somma di quantita": df_pivot["Somma di quantita"].sum(),
@@ -874,16 +880,16 @@ def render_isa_doc_cliente():
             # Ricrea il foglio Corrispondenza a partire dalla legenda JSON
             df_corr = pd.DataFrame(
                 [(k, v) for k, v in legenda.items()],
-                columns=["CATEGORIE GIÀ PRESENTI", "CATEGORIE VOLUTE DALLA CLINICA"],
+                columns=["CATEGORIE PRESENTI", "CATEGORIE DALLA CLINICA"],
             )
             df_corr.to_excel(writer, sheet_name="Corrispondenza", index=False)
 
         data = output.getvalue()
 
     st.download_button(
-        "Scarica Excel ISA Cliente",
+        "Scarica Excel",
         data=data,
-        file_name="Studio_ISA_Cliente.xlsx",
+        file_name="ExportTofanelli.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -1346,6 +1352,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
