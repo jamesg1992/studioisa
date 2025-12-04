@@ -877,12 +877,26 @@ def render_isa_doc_cliente():
             df_lista.to_excel(writer, sheet_name="Lista", index=False)
             df_pivot.to_excel(writer, sheet_name="Tabella Pivot", index=False)
 
-            # Ricrea il foglio Corrispondenza a partire dalla legenda JSON
             df_corr = pd.DataFrame(
                 [(k, v) for k, v in legenda.items()],
-                columns=["CATEGORIE PRESENTI", "CATEGORIE DALLA CLINICA"],
+                columns=["CATEGORIE GIÀ PRESENTI", "CATEGORIE VOLUTE DALLA CLINICA"],
             )
             df_corr.to_excel(writer, sheet_name="Corrispondenza", index=False)
+
+            # --- FORMATTAZIONE GRASSETTO SUL FOGLIO PIVOT ---
+            wb = writer.book
+            ws_pivot = wb["Tabella Pivot"]
+
+            bold_font = Font(bold=True)
+
+            # Intestazioni (riga 1)
+            for cell in ws_pivot[1]:
+                cell.font = bold_font
+
+            # Riga "Totale complessivo" (ultima riga)
+            last_row_idx = ws_pivot.max_row
+            for cell in ws_pivot[last_row_idx]:
+                cell.font = bold_font
 
         data = output.getvalue()
 
@@ -1352,6 +1366,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
