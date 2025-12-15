@@ -42,20 +42,6 @@ vectorizer = None
 model_B = None
 vectorizer_B = None
 
-Sì, si può integrare Sonar come solo suggerimento senza toccare la logica attuale (regole, dizionario, SVM, auto‑apprendimento).​​
-
-Di seguito ti propongo una patch in 3 punti: 1) helper Sonar, 2) toggle in sidebar, 3) uso nel blocco di classificazione manuale.
-
-1. Helper Sonar (parte alta del file)
-Subito dopo i placeholder dei modelli AI:
-
-python
-# AI MODELS (global placeholders)
-model = None
-vectorizer = None
-model_B = None
-vectorizer_B = None
-
 # =============== SONAR (Perplexity) =================
 PPLX_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 
@@ -1484,6 +1470,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
