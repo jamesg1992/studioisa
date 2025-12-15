@@ -42,6 +42,95 @@ vectorizer = None
 model_B = None
 vectorizer_B = None
 
+Sì, si può integrare Sonar come solo suggerimento senza toccare la logica attuale (regole, dizionario, SVM, auto‑apprendimento).​​
+
+Di seguito ti propongo una patch in 3 punti: 1) helper Sonar, 2) toggle in sidebar, 3) uso nel blocco di classificazione manuale.
+
+1. Helper Sonar (parte alta del file)
+Subito dopo i placeholder dei modelli AI:
+
+python
+# AI MODELS (global placeholders)
+model = None
+vectorizer = None
+model_B = None
+vectorizer_B = None
+
+# =============== SONAR (Perplexity) =================
+PPLX_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def sonar_suggest_category(term: str, mode: str, categories: list[str]):
+    """
+    Chiede a Sonar una categoria suggerita per `term`.
+    Non modifica nulla: restituisce solo un dict o None.
+    """
+    if not PPLX_API_KEY:
+        return None
+
+    prompt = {
+        "task": (
+            "Devi assegnare il termine a UNA SOLA categoria tra allowed_categories. "
+            "Rispondi SOLO con JSON."
+        ),
+        "term": term,
+        "mode": mode,
+        "allowed_categories": categories,
+    }
+
+    try:
+        payload = {
+            "model": "sonar-pro",  # oppure "sonar" se preferisci
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Sei un classificatore. "
+                        "Rispondi SOLO con JSON del tipo: "
+                        "{\"category\": \"<nome_categoria>\", \"confidence\": <numero_0_1>} "
+                        "e assicurati che category sia una delle allowed_categories."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(prompt, ensure_ascii=False),
+                },
+            ],
+            "temperature": 0.0,
+        }
+
+        r = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {PPLX_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=12,
+        )
+        if r.status_code != 200:
+            return None
+
+        content = r.json()["choices"][0]["message"]["content"]
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            return None
+
+        cat = data.get("category")
+        conf = data.get("confidence")
+        if cat not in categories:
+            return None
+
+        try:
+            conf = float(conf) if conf is not None else None
+        except (TypeError, ValueError):
+            conf = None
+
+        return {"category": cat, "confidence": conf}
+    except Exception:
+        return None
+
 # =============== UTILS =================
 def norm(s):
     return re.sub(r"\s+", " ", str(s).strip().lower())
@@ -480,6 +569,17 @@ else:
     st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
     st.sidebar.caption("Alcyon Italia SpA - 2025 - v.1.1")
 
+# --- Nuova opzione Sonar (solo aggiunta, nessuna logica cambiata) ---
+use_sonar = st.sidebar.checkbox(
+    "Usa Sonar (Perplexity) per suggerire la categoria",
+    value=False,
+    disabled=not bool(PPLX_API_KEY),
+)
+if not PPLX_API_KEY:
+    st.sidebar.caption("Configura PERPLEXITY_API_KEY per abilitare i suggerimenti Sonar.")
+else:
+    st.sidebar.caption("Attenzione: i termini vengono inviati al servizio esterno Sonar.")
+
 # =============== MAIN =================
 def main():
     if page == "👤 Gestione Utenti":
@@ -647,6 +747,22 @@ def main():
         default_index = opts.index(last) if last in opts else 0
 
         st.warning(f"🧠 Da classificare {idx+1}/{len(pending)} → “{term}”")
+
+        # --- NUOVO: suggerimento Sonar opzionale ---
+        sonar_suggestion = None
+        if use_sonar and PPLX_API_KEY:
+            with st.spinner("Chiedo un suggerimento a Sonar..."):
+                sonar_suggestion = sonar_suggest_category(term, mode, opts)
+
+        if sonar_suggestion:
+            msg = f"Suggerimento Sonar: {sonar_suggestion['category']}"
+            if sonar_suggestion.get("confidence") is not None:
+                msg += f" (confidenza ≈ {sonar_suggestion['confidence']:.2f})"
+            st.info(msg)
+
+        # selectbox invariata; l’utente decide comunque cosa salvare
+        last = st.session_state.get("lastcat", opts[0])
+        default_index = opts.index(last) if last in opts else 0
         cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
         if st.button("✅ Salva e prossimo"):
@@ -1368,6 +1484,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
