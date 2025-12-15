@@ -23,6 +23,8 @@ from docx.enum.section import WD_ORIENT, WD_SECTION_START
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.enum.section import WD_SECTION_START
+import asyncio
+import aiohttp
 
 
 # =============== CONFIG =================
@@ -116,6 +118,73 @@ def sonar_suggest_category(term: str, mode: str, categories: list[str]):
         return {"category": cat, "confidence": conf}
     except Exception:
         return None
+PPLX_URL = "https://api.perplexity.ai/chat/completions"
+SONAR_MODEL_FAST = "sonar"  # più veloce di sonar-pro
+
+async def _sonar_one(session: aiohttp.ClientSession, term: str, mode: str, categories: list[str]):
+    prompt = {
+        "task": "Assegna UNA SOLA categoria tra allowed_categories. Rispondi SOLO JSON.",
+        "term": term,
+        "mode": mode,
+        "allowed_categories": categories,
+    }
+
+    payload = {
+        "model": SONAR_MODEL_FAST,
+        "messages": [
+            {"role": "system", "content": "Rispondi SOLO JSON: {\"category\":\"...\",\"confidence\":0.xx}"},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+        ],
+        "temperature": 0.0,
+    }
+
+    try:
+        async with session.post(
+            PPLX_URL,
+            headers={"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as resp:
+            if resp.status != 200:
+                return term, None, 0.0
+            data = await resp.json()
+            content = data["choices"][0]["message"]["content"]
+
+        parsed = json.loads(content)
+        cat = parsed.get("category")
+        conf = parsed.get("confidence", 0.0)
+
+        try:
+            conf = float(conf)
+        except Exception:
+            conf = 0.0
+
+        if cat not in categories:
+            return term, None, 0.0
+
+        return term, cat, conf
+    except Exception:
+        return term, None, 0.0
+
+
+async def sonar_batch(terms: list[str], mode: str, categories: list[str], max_concurrency: int):
+    if not terms or not PPLX_API_KEY:
+        return {}
+
+    sem = asyncio.Semaphore(max_concurrency)
+
+    async with aiohttp.ClientSession() as session:
+        async def run_one(t):
+            async with sem:
+                return await _sonar_one(session, t, mode, categories)
+
+        out = await asyncio.gather(*[run_one(t) for t in terms], return_exceptions=False)
+
+    res = {}
+    for term, cat, conf in out:
+        if cat:
+            res[term] = (cat, conf)
+    return res
 
 # =============== UTILS =================
 def norm(s):
@@ -557,7 +626,7 @@ else:
 
 # --- Nuova opzione Sonar (solo aggiunta, nessuna logica cambiata) ---
 use_sonar = st.sidebar.checkbox(
-    "Usa Sonar (Perplexity) per suggerire la categoria",
+    "Usa Sonar per suggerire la categoria",
     value=False,
     disabled=not bool(PPLX_API_KEY),
 )
@@ -565,6 +634,18 @@ if not PPLX_API_KEY:
     st.sidebar.caption("Configura PERPLEXITY_API_KEY per abilitare i suggerimenti Sonar.")
 else:
     st.sidebar.caption("Attenzione: i termini vengono inviati al servizio esterno Sonar.")
+
+# --- Auto Sonar (sempre) + SVM fallback ---
+auto_sonar = st.sidebar.checkbox(
+    "Auto-classifica termini nuovi con Sonar",
+    value=True,
+    disabled=not bool(PPLX_API_KEY),
+)
+sonar_concurrency = st.sidebar.slider(
+    "Velocità Sonar",
+    1, 15, 8, 1,
+    disabled=not (bool(PPLX_API_KEY) and auto_sonar),
+)
 
 # =============== MAIN =================
 def main():
@@ -640,13 +721,41 @@ def main():
         df["_clean"] = df[base].astype(str).map(norm)
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
+        # --- AUTO SONAR prima di SVM (sempre) ---
+        autoadded_now = []
+        remaining = candidates[:]
+
+        opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
+
+        if auto_sonar and PPLX_API_KEY and remaining:
+            cache_key = (mode, tuple(remaining))
+            if "sonar_auto_cache" not in st.session_state:
+                st.session_state.sonar_auto_cache = {}
+
+        if cache_key in st.session_state.sonar_auto_cache:
+            sonar_map = st.session_state.sonar_auto_cache[cache_key]
+        else:
+            with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
+                sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
+            st.session_state.sonar_auto_cache[cache_key] = sonar_map
+
+        SAFE_CONFIDENCE = max(autothresh, 0.95)
+        for t in remaining:
+            if t in sonar_map:
+                cat, conf = sonar_map[t]
+                if float(conf) >= SAFE_CONFIDENCE:
+                    autoadded_now.append((t, cat, float(conf)))
+                    new[norm(t)] = cat
+
+        remaining = [t for t in remaining if t not in sonar_map]
+        
         auto_added_now = []
-        if model and vectorizer and candidates:
-            X = vectorizer.transform(candidates)
+        if model and vectorizer and remaining:
+            X = vectorizer.transform(remaining)
             probs = model.predict_proba(X)
             preds = model.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
-            for t, p, c in zip(candidates, preds, confs):
+            for t, p, c in zip(remaining, preds, confs):
                 SAFE_CONFIDENCE = max(auto_thresh, 0.95)
                 if float(c) >= SAFE_CONFIDENCE:
                     auto_added_now.append((t, p, float(c)))
@@ -681,13 +790,41 @@ def main():
         df["_clean"] = df[base].astype(str).map(norm)
         candidates = sorted([t for t in df["_clean"].unique() if t not in learned])
 
+        # --- AUTO SONAR prima di SVM (sempre) ---
+        autoadded_now = []
+        remaining = candidates[:]
+
+        opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
+
+        if auto_sonar and PPLX_API_KEY and remaining:
+            cache_key = (mode, tuple(remaining))
+            if "sonar_auto_cache" not in st.session_state:
+                st.session_state.sonar_auto_cache = {}
+
+        if cache_key in st.session_state.sonar_auto_cache:
+            sonar_map = st.session_state.sonar_auto_cache[cache_key]
+        else:
+            with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
+                sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
+            st.session_state.sonar_auto_cache[cache_key] = sonar_map
+
+        SAFE_CONFIDENCE = max(autothresh, 0.95)
+        for t in remaining:
+            if t in sonar_map:
+                cat, conf = sonar_map[t]
+                if float(conf) >= SAFE_CONFIDENCE:
+                    autoadded_now.append((t, cat, float(conf)))
+                    new[norm(t)] = cat
+
+        remaining = [t for t in remaining if t not in sonar_map]
+        
         auto_added_now = []
-        if model_B and vectorizer_B and candidates:
-            X = vectorizer_B.transform(candidates)
+        if model_B and vectorizer_B and remaining:
+            X = vectorizer_B.transform(remaining)
             probs = model_B.predict_proba(X)
             preds = model_B.classes_[probs.argmax(axis=1)]
             confs = probs.max(axis=1)
-            for t, p, c in zip(candidates, preds, confs):
+            for t, p, c in zip(remaining, preds, confs):
                 if float(c) >= auto_thresh:
                     new[t] = p
                     auto_added_now.append((t, p, float(c)))
@@ -1470,6 +1607,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
