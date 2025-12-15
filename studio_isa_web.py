@@ -713,6 +713,10 @@ def main():
         # --- AUTO SONAR prima di SVM (sempre) ---
         autoadded_now = []
         remaining = candidates[:]
+        MAX_SONAR_TERMS = 30
+        if auto_sonar and len(remaining) > MAX_SONAR_TERMS:
+            st.warning(f"⚠️ Sonar limitato ai primi {MAX_SONAR_TERMS} termini (trovati {len(remaining)})")
+            remaining = remaining[:MAX_SONAR_TERMS]
 
         opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
 
@@ -1600,6 +1604,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
