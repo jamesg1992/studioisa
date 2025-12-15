@@ -739,7 +739,7 @@ def main():
                 sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
             st.session_state.sonar_auto_cache[cache_key] = sonar_map
 
-        SAFE_CONFIDENCE = max(autothresh, 0.95)
+        SAFE_CONFIDENCE = max(auto_thresh, 0.95)
         for t in remaining:
             if t in sonar_map:
                 cat, conf = sonar_map[t]
@@ -808,7 +808,7 @@ def main():
                 sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
             st.session_state.sonar_auto_cache[cache_key] = sonar_map
 
-        SAFE_CONFIDENCE = max(autothresh, 0.95)
+        SAFE_CONFIDENCE = max(auto_thresh, 0.95)
         for t in remaining:
             if t in sonar_map:
                 cat, conf = sonar_map[t]
@@ -1607,6 +1607,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
