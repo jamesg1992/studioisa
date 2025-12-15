@@ -624,17 +624,6 @@ else:
     st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
     st.sidebar.caption("Alcyon Italia SpA - 2025 - v.1.1")
 
-# --- Nuova opzione Sonar (solo aggiunta, nessuna logica cambiata) ---
-use_sonar = st.sidebar.checkbox(
-    "Usa Sonar per suggerire la categoria",
-    value=False,
-    disabled=not bool(PPLX_API_KEY),
-)
-if not PPLX_API_KEY:
-    st.sidebar.caption("Configura PERPLEXITY_API_KEY per abilitare i suggerimenti Sonar.")
-else:
-    st.sidebar.caption("Attenzione: i termini vengono inviati al servizio esterno Sonar.")
-
 # --- Auto Sonar (sempre) + SVM fallback ---
 auto_sonar = st.sidebar.checkbox(
     "Auto-classifica termini nuovi con Sonar",
@@ -732,22 +721,22 @@ def main():
             if "sonar_auto_cache" not in st.session_state:
                 st.session_state.sonar_auto_cache = {}
 
-        if cache_key in st.session_state.sonar_auto_cache:
-            sonar_map = st.session_state.sonar_auto_cache[cache_key]
-        else:
-            with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
-                sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
-            st.session_state.sonar_auto_cache[cache_key] = sonar_map
+            if cache_key in st.session_state.sonar_auto_cache:
+                sonar_map = st.session_state.sonar_auto_cache[cache_key]
+            else:
+                with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
+                    sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
+                st.session_state.sonar_auto_cache[cache_key] = sonar_map
 
-        SAFE_CONFIDENCE = max(auto_thresh, 0.95)
-        for t in remaining:
-            if t in sonar_map:
-                cat, conf = sonar_map[t]
-                if float(conf) >= SAFE_CONFIDENCE:
-                    autoadded_now.append((t, cat, float(conf)))
-                    new[norm(t)] = cat
+            SAFE_CONFIDENCE = max(auto_thresh, 0.95)
+            for t in remaining:
+                if t in sonar_map:
+                    cat, conf = sonar_map[t]
+                    if float(conf) >= SAFE_CONFIDENCE:
+                        autoadded_now.append((t, cat, float(conf)))
+                        new[norm(t)] = cat
 
-        remaining = [t for t in remaining if t not in sonar_map]
+            remaining = [t for t in remaining if t not in sonar_map]
         
         auto_added_now = []
         if model and vectorizer and remaining:
@@ -793,6 +782,10 @@ def main():
         # --- AUTO SONAR prima di SVM (sempre) ---
         autoadded_now = []
         remaining = candidates[:]
+        MAX_SONAR_TERMS = 30
+        if auto_sonar and len(remaining) > MAX_SONAR_TERMS:
+            st.warning(f"⚠️ Sonar limitato ai primi {MAX_SONAR_TERMS} termini (trovati {len(remaining)})")
+            remaining = remaining[:MAX_SONAR_TERMS]
 
         opts = list(RULES_A.keys()) if mode == "A" else list(RULES_B.keys())
 
@@ -801,22 +794,22 @@ def main():
             if "sonar_auto_cache" not in st.session_state:
                 st.session_state.sonar_auto_cache = {}
 
-        if cache_key in st.session_state.sonar_auto_cache:
-            sonar_map = st.session_state.sonar_auto_cache[cache_key]
-        else:
-            with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
-                sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
-            st.session_state.sonar_auto_cache[cache_key] = sonar_map
+            if cache_key in st.session_state.sonar_auto_cache:
+                sonar_map = st.session_state.sonar_auto_cache[cache_key]
+            else:
+                with st.spinner(f"Sonar: classificazione automatica {len(remaining)} termini..."):
+                    sonar_map = asyncio.run(sonar_batch(remaining, mode, opts, sonar_concurrency))
+                st.session_state.sonar_auto_cache[cache_key] = sonar_map
 
-        SAFE_CONFIDENCE = max(auto_thresh, 0.95)
-        for t in remaining:
-            if t in sonar_map:
-                cat, conf = sonar_map[t]
-                if float(conf) >= SAFE_CONFIDENCE:
-                    autoadded_now.append((t, cat, float(conf)))
-                    new[norm(t)] = cat
+            SAFE_CONFIDENCE = max(auto_thresh, 0.95)
+            for t in remaining:
+                if t in sonar_map:
+                    cat, conf = sonar_map[t]
+                    if float(conf) >= SAFE_CONFIDENCE:
+                        autoadded_now.append((t, cat, float(conf)))
+                        new[norm(t)] = cat
 
-        remaining = [t for t in remaining if t not in sonar_map]
+            remaining = [t for t in remaining if t not in sonar_map]
         
         auto_added_now = []
         if model_B and vectorizer_B and remaining:
@@ -1607,6 +1600,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
