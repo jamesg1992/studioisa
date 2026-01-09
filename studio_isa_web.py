@@ -650,7 +650,8 @@ def main():
         st.session_state.auto_sonar = False
     if "sonar_concurrency" not in st.session_state:
         st.session_state.sonar_concurrency = 5
-
+    
+    st.sidebar.caption("📌 Funzionalità in Beta (al momento non usare)")
     use_sonar = st.sidebar.checkbox("Suggerimento Sonar (Beta)", key="use_sonar")
     auto_sonar = st.sidebar.checkbox("Auto-Sonar (Beta)", key="auto_sonar")
     sonar_concurrency = st.sidebar.slider("Sonar concurrency", 1, 20, st.session_state.sonar_concurrency)
@@ -1607,6 +1608,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
