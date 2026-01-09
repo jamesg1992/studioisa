@@ -653,6 +653,21 @@ def main():
 
     st.title("📊 Studio ISA – DrVeto e VetsGo")
 
+    # --- Sonar flags: DEVONO esistere sempre ---
+    PPLX_API_KEY = os.getenv("PPLX_API_KEY", "")
+
+    if "use_sonar" not in st.session_state:
+        st.session_state.use_sonar = False
+    if "auto_sonar" not in st.session_state:
+        st.session_state.auto_sonar = False
+    if "sonar_concurrency" not in st.session_state:
+        st.session_state.sonar_concurrency = 5
+
+    use_sonar = st.sidebar.checkbox("Suggerimento Sonar (manuale)", key="use_sonar")
+    auto_sonar = st.sidebar.checkbox("Auto-Sonar (batch)", key="auto_sonar")
+    sonar_concurrency = st.sidebar.slider("Sonar concurrency", 1, 20, st.session_state.sonar_concurrency)
+    st.session_state.sonar_concurrency = sonar_concurrency
+    
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
         st.stop()
@@ -823,7 +838,7 @@ def main():
             confs = probs.max(axis=1)
             for t, p, c in zip(remaining, preds, confs):
                 if float(c) >= auto_thresh:
-                    new[t] = p
+                    new[norm(t)] = p
                     auto_added_now.append((t, p, float(c)))
 
         if auto_added_now:
@@ -881,7 +896,7 @@ def main():
             st.info(msg)
 
         # selectbox invariata; l’utente decide comunque cosa salvare
-        last = st.session_state.get("lastcat", opts[0])
+        last = st.session_state.get("last_cat", opts[0])
         default_index = opts.index(last) if last in opts else 0
         cat_sel = st.selectbox("Categoria:", opts, index=default_index)
 
@@ -1604,6 +1619,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
