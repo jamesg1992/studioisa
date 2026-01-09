@@ -284,7 +284,7 @@ def github_save_json(file_name, data):
     
     r = requests.put(url, headers=headers, data=json.dumps(payload))
     if r.status_code not in (200, 201):
-        st.error(f"❌ Errore salvataggio GitHub: {r.status_code} → {r.text}")
+        st.error(f"❌ Errore salvataggio sul Cloud: {r.status_code} → {r.text}")
 
 # =============== LOGIN SYSTEM =================
 def login():
@@ -900,7 +900,7 @@ def main():
                 st.session_state.mem = mem
                 st.session_state.new = {}
                 st.session_state.idx = 0
-                st.success("🎉 Tutto classificato e salvato su GitHub!")
+                st.success("🎉 Tutto classificato e salvato sul Cloud!")
                 st.rerun()
 
             st.session_state.idx = idx + 1
@@ -1607,6 +1607,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
