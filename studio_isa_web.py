@@ -650,6 +650,11 @@ def main():
         st.session_state.auto_sonar = False
     if "sonar_concurrency" not in st.session_state:
         st.session_state.sonar_concurrency = 5
+
+    use_sonar = st.sidebar.checkbox("Suggerimento Sonar (Beta)", key="use_sonar")
+    auto_sonar = st.sidebar.checkbox("Auto-Sonar (Beta)", key="auto_sonar")
+    sonar_concurrency = st.sidebar.slider("Sonar concurrency", 1, 20, st.session_state.sonar_concurrency)
+    st.session_state.sonar_concurrency = sonar_concurrency
     
     file = st.file_uploader("Seleziona Excel", type=["xlsx","xls"])
     if not file:
@@ -1602,6 +1607,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
