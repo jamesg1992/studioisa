@@ -624,18 +624,6 @@ else:
     st.sidebar.caption("Se la confidenza del modello ≥ soglia, il termine viene appreso in automatico.")
     st.sidebar.caption("Alcyon Italia SpA - 2025 - v.1.1")
 
-# --- Auto Sonar (sempre) + SVM fallback ---
-auto_sonar = st.sidebar.checkbox(
-    "Auto-classifica termini nuovi con Sonar",
-    value=True,
-    disabled=not bool(PPLX_API_KEY),
-)
-sonar_concurrency = st.sidebar.slider(
-    "Velocità Sonar",
-    1, 15, 8, 1,
-    disabled=not (bool(PPLX_API_KEY) and auto_sonar),
-)
-
 # =============== MAIN =================
 def main():
     if page == "👤 Gestione Utenti":
@@ -1619,6 +1607,7 @@ if __name__ == "__main__":
         render_isa_doc_cliente()
     else:
         main()
+
 
 
 
